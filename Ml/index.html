@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grievance Chatbot</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+        }
+
+        #chat-container {
+            max-width: 500px;
+            margin: auto;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        h2 {
+            text-align: center;
+            color: #333;
+            padding: 15px 0;
+            border-bottom: 1px solid #eee;
+            margin: 0;
+        }
+
+        #chatbox {
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            border-bottom: 1px solid #eee;
+            background-color: #fafafa;
+        }
+
+        #chatbox div {
+            margin-bottom: 10px;
+            line-height: 1.4;
+        }
+
+        #chatbox b {
+            color: #007bff;
+        }
+
+        #chatbox .bot-message b {
+            color: #28a745;
+        }
+
+        #input-area {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #eee;
+            background-color: #fff;
+        }
+
+        #userInput {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+
+        button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="chat-container">
+        <h2>Grievance Chatbot</h2>
+        <div id="chatbox">
+            <!-- Chat messages will appear here -->
+        </div>
+        <div id="input-area">
+            <input type="text" id="userInput" placeholder="Type your message..." autocomplete="off">
+            <button id="sendButton" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatbox = document.getElementById('chatbox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        // Generate a unique session ID for this chat session
+        const session_id = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+        // Function to add a message to the chatbox
+        function addMessage(sender, text) {
+            const messageDiv = document.createElement('div');
+            const senderStrong = document.createElement('b');
+            senderStrong.textContent = `${sender}: `;
+
+            if (sender === 'Bot') {
+                messageDiv.classList.add('bot-message');
+            }
+
+            messageDiv.appendChild(senderStrong);
+            messageDiv.appendChild(document.createTextNode(text));
+            chatbox.appendChild(messageDiv);
+            chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to bottom
+        }
+
+        // Function to send message to backend and display response
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return; // Don't send empty messages
+
+            addMessage("You", message);
+            userInput.value = ""; // Clear input field
+            sendButton.disabled = true; // Disable button while waiting for response
+            userInput.disabled = true; // Disable input field
+
+            try {
+                const response = await fetch("http://127.0.0.1:8000/chat", { // Use 127.0.0.1 instead of localhost sometimes helps
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Accept": "application/json" // Explicitly accept JSON
+                    },
+                    body: JSON.stringify({ session_id: session_id, text: message })
+                });
+
+                if (!response.ok) {
+                    // Handle HTTP errors (like 500 Internal Server Error)
+                    const errorText = await response.text();
+                    console.error("HTTP Error:", response.status, errorText);
+                    addMessage("Bot", `Sorry, something went wrong on the server (Error ${response.status}). Please try again later.`);
+                    return; // Exit the function early
+                }
+
+                const data = await response.json();
+                addMessage("Bot", data.reply);
+
+            } catch (error) {
+                // Handle network errors or issues parsing JSON
+                console.error("Fetch Error:", error);
+                addMessage("Bot", "Sorry, I couldn't connect to the server. Please check if it's running and try again.");
+            } finally {
+                sendButton.disabled = false; // Re-enable button
+                userInput.disabled = false; // Re-enable input
+                userInput.focus(); // Focus back on input field
+            }
+        }
+
+        // Allow sending message by pressing Enter key
+        userInput.addEventListener('keypress', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Prevent default form submission behavior
+                sendMessage();
+            }
+        });
+
+        // Initial bot message
+        addMessage("Bot", "Welcome to the Grievance Chatbot! Please describe your issue.");
+        userInput.focus(); // Focus input field on load
+
+    </script>
+
+</body>
+
+</html>

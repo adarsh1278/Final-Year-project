@@ -5,6 +5,5 @@
 /Ml/.venv
 /Ml/__pycache__
 /Ml/nltk_data
-/Ml
 /frontend
 /backend/.env
