@@ -1,9 +1,7 @@
 # Ignore node_modules folders
-/frontend/node_modules
 /backend/node_modules
 /Ml/venv
 /Ml/.venv
 /Ml/__pycache__
 /Ml/nltk_data
-/frontend
 /backend/.env
