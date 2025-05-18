@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { User, Phone, Mail, Calendar, Globe } from 'lucide-react';
@@ -26,9 +26,9 @@ export default function ProfilePage() {
         },
         credentials: 'include' // Important for sending cookies
       });
-  
+
       const data = await response.json();
-      
+
       if (data.status === 'success') {
         setComplaintsData(data.data);
       } else {
@@ -91,7 +91,7 @@ export default function ProfilePage() {
   return (
 
 
-    
+
     <div className="bg-gray-50 min-h-screen font-sans">
 
       {/* Breadcrumb */}
@@ -160,7 +160,7 @@ export default function ProfilePage() {
                       <Button variant="outline" className="w-full border-blue-800 text-blue-800 hover:bg-blue-50">Complaint History</Button>
                     </Link>
                     <Link href="/editprofile" passHref>
-                    <Button variant="secondary" className="w-full">Edit Profile</Button>
+                      <Button variant="secondary" className="w-full">Edit Profile</Button>
                     </Link>
                     <Button variant="outline" className="w-full">Change Password</Button>
                   </div>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ExternalLink, MessageSquare, Search, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,11 +13,12 @@ import { translate } from '@/utils/translator';
 export default function Home() {
   const [complaintNumber, setComplaintNumber] = useState('');
   const { language } = useAuth();
-
+  const router = useRouter();
   const handleTrackSubmit = (e) => {
     e.preventDefault();
     if (complaintNumber) {
-      window.location.href = `/track/${complaintNumber}`;
+      // Use router instead of window.location for Next.js
+      router.push(`/track/${complaintNumber}`);
     }
   };
 
@@ -98,9 +100,9 @@ export default function Home() {
                     className="w-full"
                   />
                 </div>
-                <Button 
-                  type="submit" 
-                  className="w-full bg-primary hover:bg-primary/90 text-white" 
+                <Button
+                  type="submit"
+                  className="w-full bg-primary hover:bg-primary/90 text-white"
                   disabled={!complaintNumber}
                 >
                   Track Now
@@ -151,34 +153,34 @@ export default function Home() {
         </div>
       </section>
       {/* CTA Section */}
-<section className="py-16">
-<div className="container mx-auto px-4">
-  <motion.div
-    className="bg-primary text-primary-foreground rounded-lg p-8 md:p-12 text-center"
-    initial={{ opacity: 0, y: 20 }}
-    whileInView={{ opacity: 1, y: 0 }}
-    viewport={{ once: true }}
-    transition={{ duration: 0.5 }}
-  >
-    <h2 className="text-3xl font-bold mb-4">Start Using Our Services Today</h2>
-    <p className="mb-8 md:w-3/4 mx-auto">
-      Join thousands of satisfied citizens who have successfully resolved their grievances through our platform.
-    </p>
-    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-      <Link href="/signup">
-        <Button size="lg" variant="secondary">
-          Sign Up Now
-        </Button>
-      </Link>
-      <Link href="/complaint/register">
-        <Button size="lg" variant="outline" className="bg-primary/20 border-primary-foreground/20">
-          Register Complaint
-        </Button>
-      </Link>
-    </div>
-  </motion.div>
-</div>
-</section>
+      <section className="py-16">
+        <div className="container mx-auto px-4">
+          <motion.div
+            className="bg-primary text-primary-foreground rounded-lg p-8 md:p-12 text-center"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <h2 className="text-3xl font-bold mb-4">Start Using Our Services Today</h2>
+            <p className="mb-8 md:w-3/4 mx-auto">
+              Join thousands of satisfied citizens who have successfully resolved their grievances through our platform.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              <Link href="/signup">
+                <Button size="lg" variant="secondary">
+                  Sign Up Now
+                </Button>
+              </Link>
+              <Link href="/complaint/register">
+                <Button size="lg" variant="outline" className="bg-primary/20 border-primary-foreground/20">
+                  Register Complaint
+                </Button>
+              </Link>
+            </div>
+          </motion.div>
+        </div>
+      </section>
     </>
   );
 }

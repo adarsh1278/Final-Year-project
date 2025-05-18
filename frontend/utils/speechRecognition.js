@@ -1,7 +1,10 @@
 'use client';
 
 // Check if SpeechRecognition is available
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let SpeechRecognition = null;
+if (typeof window !== 'undefined') {
+  SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
 
 export const isVoiceRecognitionSupported = () => {
   return SpeechRecognition !== null;
