@@ -7,17 +7,16 @@ import { motion } from 'framer-motion';
 import { ExternalLink, MessageSquare, Search, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useAuth } from '@/contexts/AuthContext';
-import { translate } from '@/utils/translator';
+import { useTranslation } from 'react-i18next';
 
 export default function Home() {
   const [complaintNumber, setComplaintNumber] = useState('');
-  const { language } = useAuth();
+  const { t } = useTranslation();
   const router = useRouter();
+
   const handleTrackSubmit = (e) => {
     e.preventDefault();
     if (complaintNumber) {
-      // Use router instead of window.location for Next.js
       router.push(`/track/${complaintNumber}`);
     }
   };
@@ -37,18 +36,18 @@ export default function Home() {
   const features = [
     {
       icon: <MessageSquare className="h-8 w-8 text-primary" />,
-      title: "Easy Complaint Registration",
-      description: "Submit grievances with a simple online form."
+      title: t('home.features.easy.title'),
+      description: t('home.features.easy.description')
     },
     {
       icon: <Search className="h-8 w-8 text-primary" />,
-      title: "Track Complaint Status",
-      description: "Monitor the progress of your complaints in real-time."
+      title: t('home.features.realtime.title'),
+      description: t('home.features.realtime.description')
     },
     {
       icon: <CheckCircle className="h-8 w-8 text-primary" />,
-      title: "Multilingual Support",
-      description: "Access support and services in multiple languages."
+      title: t('home.features.multilingual.title'),
+      description: t('home.features.multilingual.description')
     }
   ];
 
@@ -68,13 +67,13 @@ export default function Home() {
                 GRIEVEASE
               </h1>
               <h2 className="text-2xl md:text-3xl font-serif font-semibold mb-2 text-primary text-blue-950">
-                PUBLIC GRIEVANCE REDRESSAL PORTAL
+                {t('home.title')}
               </h2>
               <p className="uppercase tracking-wide text-sm font-semibold text-muted-foreground mt-4 mb-2">
                 Efficient | Transparent | Accountable
               </p>
               <p className="text-base text-muted-foreground mb-6">
-                Track and register complaints seamlessly through our official portal.
+                {t('home.description')}
               </p>
             </motion.div>
 
@@ -85,16 +84,16 @@ export default function Home() {
               transition={{ duration: 0.5, delay: 0.2 }}
             >
               <h2 className="text-xl font-bold mb-4 text-primary">
-                Track Your Complaint
+                {t('complaint.track')}
               </h2>
               <form onSubmit={handleTrackSubmit} className="space-y-4">
                 <div>
                   <label htmlFor="complaintNumber" className="text-sm font-medium mb-1 block">
-                    Enter Complaint Number
+                    {t('complaint.complaintNumber')}
                   </label>
                   <Input
                     id="complaintNumber"
-                    placeholder="e.g. ELE-17045677203-4823"
+                    placeholder={t('complaint.trackPlaceholder')}
                     value={complaintNumber}
                     onChange={(e) => setComplaintNumber(e.target.value)}
                     className="w-full"
@@ -105,7 +104,7 @@ export default function Home() {
                   className="w-full bg-primary hover:bg-primary/90 text-white"
                   disabled={!complaintNumber}
                 >
-                  Track Now
+                  {t('complaint.trackButton')}
                 </Button>
               </form>
             </motion.div>
@@ -124,7 +123,7 @@ export default function Home() {
             variants={fadeIn}
             custom={0}
           >
-            Key Features
+            {t('home.features.title')}
           </motion.h2>
 
           <div className="grid md:grid-cols-3 gap-8">
@@ -152,6 +151,7 @@ export default function Home() {
           </div>
         </div>
       </section>
+
       {/* CTA Section */}
       <section className="py-16">
         <div className="container mx-auto px-4">
@@ -169,12 +169,12 @@ export default function Home() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/signup">
                 <Button size="lg" variant="secondary">
-                  Sign Up Now
+                  {t('nav.signup')}
                 </Button>
               </Link>
               <Link href="/complaint/register">
                 <Button size="lg" variant="outline" className="bg-primary/20 border-primary-foreground/20">
-                  Register Complaint
+                  {t('home.registerComplaint')}
                 </Button>
               </Link>
             </div>

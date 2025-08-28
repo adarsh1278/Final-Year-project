@@ -12,11 +12,14 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { registerComplaint } from '@/services/complaintService';
 import VoiceInput from '@/components/VoiceInput';
 import Chatbot from '@/components/Chatbot/Chatbot';
+import { useTranslation } from 'react-i18next';
+import { useAppTranslations } from '@/components/TranslationHelpers';
 
 export default function RegisterComplaintPage() {
   const { register, handleSubmit, formState: { errors }, setValue, watch, reset } = useForm({
@@ -39,6 +42,7 @@ export default function RegisterComplaintPage() {
   const { isAuthenticated, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
+  const { t, translateDepartment } = useAppTranslations();
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -78,8 +82,8 @@ export default function RegisterComplaintPage() {
       const response = await registerComplaint(complaintData);
 
       toast({
-        title: 'Complaint Registered',
-        description: `Your complaint has been successfully registered with number: ${response.complaintNumber}`,
+        title: t('complaint.success'),
+        description: `${t('complaint.success')} ${response.complaintNumber}`,
         variant: 'success',
       });
 
@@ -91,8 +95,8 @@ export default function RegisterComplaintPage() {
 
     } catch (error) {
       toast({
-        title: 'Registration Failed',
-        description: error.response?.data?.message || 'Failed to register complaint',
+        title: t('complaint.error'),
+        description: error.response?.data?.message || t('complaint.error'),
         variant: 'destructive',
       });
     } finally {
@@ -132,14 +136,13 @@ export default function RegisterComplaintPage() {
   }
 
   return (
-    <div className="container mx-auto  bg-[#f7f9fc]">
-
+    <div className="container mx-auto bg-[#f7f9fc]">
       {/* Breadcrumb */}
       <div className="bg-gray-100 py-2 border-b border-gray-200 font-sans">
         <div className="container mx-auto px-4">
           <div className="text-sm text-gray-600">
-            <Link href="/" className="text-blue-700 hover:underline">Home</Link> &gt; 
-            <span className="font-medium text-gray-800"> Register Complaint</span>
+            <Link href="/" className="text-blue-700 hover:underline">{t('nav.home')}</Link> &gt;
+            <span className="font-medium text-gray-800"> {t('complaint.register')}</span>
           </div>
         </div>
       </div>
@@ -152,17 +155,17 @@ export default function RegisterComplaintPage() {
         >
           <Card className="shadow-lg border border-gray-300 rounded-xl bg-white">
             <CardHeader className="bg-[#e8edf5] rounded-t-xl border-b border-gray-300 p-6">
-              <CardTitle className="text-2xl font-semibold text-[#1a237e]">Register a Complaint</CardTitle>
+              <CardTitle className="text-2xl font-semibold text-[#1a237e]">{t('complaint.register')}</CardTitle>
               <CardDescription className="text-sm text-[#3c3f4a]">
-                Fill out the form to register your complaint or use the chatbot for assistance
+                {t('complaint.descriptionPlaceholder')}
               </CardDescription>
             </CardHeader>
 
             <Tabs defaultValue="form" value={activeTab} onValueChange={setActiveTab}>
               <div className="px-6 pt-4">
                 <TabsList className="grid w-full grid-cols-2 bg-[#d9e1f2] text-[#1a237e]">
-                  <TabsTrigger value="form">Form</TabsTrigger>
-                  <TabsTrigger value="chatbot">Chatbot Assistant</TabsTrigger>
+                  <TabsTrigger value="form">{t('complaint.formFill')}</TabsTrigger>
+                  <TabsTrigger value="chatbot">{t('complaint.chatAssistant')}</TabsTrigger>
                 </TabsList>
               </div>
 
@@ -170,20 +173,26 @@ export default function RegisterComplaintPage() {
                 <form onSubmit={handleSubmit(onSubmit)}>
                   <CardContent className="space-y-6 pt-4">
                     <div className="space-y-2">
-                      <Label htmlFor="department">Department</Label>
+                      <Label htmlFor="department">{t('complaint.department')}</Label>
                       <Select
                         onValueChange={(value) => setValue('department', value)}
                         defaultValue=""
                       >
                         <SelectTrigger className="bg-white border border-gray-300">
-                          <SelectValue placeholder="Select department" />
+                          <SelectValue placeholder={t('complaint.selectDepartment')} />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Electricity">Electricity</SelectItem>
-                          <SelectItem value="Water">Water</SelectItem>
-                          <SelectItem value="Roads">Roads</SelectItem>
-                          <SelectItem value="Sanitation">Sanitation</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
+                          <SelectItem value="Electricity">{translateDepartment('Electricity')}</SelectItem>
+                          <SelectItem value="Water">{translateDepartment('Water')}</SelectItem>
+                          <SelectItem value="Roads">{translateDepartment('Roads')}</SelectItem>
+                          <SelectItem value="Sanitation">{translateDepartment('Sanitation')}</SelectItem>
+                          <SelectItem value="Parks">{translateDepartment('Parks')}</SelectItem>
+                          <SelectItem value="Health">{translateDepartment('Health')}</SelectItem>
+                          <SelectItem value="Education">{translateDepartment('Education')}</SelectItem>
+                          <SelectItem value="Transportation">{translateDepartment('Transportation')}</SelectItem>
+                          <SelectItem value="Building">{translateDepartment('Building')}</SelectItem>
+                          <SelectItem value="Environment">{translateDepartment('Environment')}</SelectItem>
+                          <SelectItem value="Other">{translateDepartment('Other')}</SelectItem>
                         </SelectContent>
                       </Select>
                       {errors.department && (
@@ -192,13 +201,13 @@ export default function RegisterComplaintPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="title">Complaint Title</Label>
+                      <Label htmlFor="title">{t('complaint.title')}</Label>
                       <Input
                         id="title"
                         className="border border-gray-300"
-                        placeholder="Brief title of your complaint"
+                        placeholder={t('complaint.titlePlaceholder')}
                         {...register('title', {
-                          required: 'Title is required'
+                          required: t('complaint.required')
                         })}
                       />
                       {errors.title && (
@@ -207,19 +216,112 @@ export default function RegisterComplaintPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="description">Description</Label>
+                      <Label htmlFor="description">{t('complaint.description')}</Label>
                       <VoiceInput
                         onTranscriptChange={handleVoiceTranscript}
                         className="w-full border border-gray-300"
-                        placeholder="Describe your complaint in detail. You can type or click the microphone icon to speak."
+                        placeholder={t('complaint.descriptionPlaceholder')}
                       />
                       {errors.description && (
                         <p className="text-sm text-red-600">{errors.description.message}</p>
                       )}
                     </div>
 
-                    {/* Conditional Fields */}
-                    {/* ...no change to conditional fields logic or content */}
+                    {/* Conditional Fields Based on Department */}
+                    {department === 'Electricity' && (
+                      <div className="space-y-4 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                        <h3 className="font-medium text-blue-800">{t('complaint.electricityIssue')}</h3>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="area">{t('complaint.area')}</Label>
+                          <Input
+                            id="area"
+                            placeholder={t('complaint.areaPlaceholder')}
+                            {...register('area')}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="timing">{t('complaint.timing')}</Label>
+                          <Input
+                            id="timing"
+                            placeholder={t('complaint.timingPlaceholder')}
+                            {...register('timing')}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>{t('complaint.frequentIssue')}</Label>
+                          <Select onValueChange={(value) => setValue('frequentIssue', value)}>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('complaint.selectOption')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="true">{t('complaint.yes')}</SelectItem>
+                              <SelectItem value="false">{t('complaint.no')}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {department === 'Water' && (
+                      <div className="space-y-4 bg-cyan-50 p-4 rounded-lg border border-cyan-200">
+                        <h3 className="font-medium text-cyan-800">{t('complaint.waterIssue')}</h3>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="landmark">{t('complaint.landmark')}</Label>
+                          <Input
+                            id="landmark"
+                            placeholder={t('complaint.landmarkPlaceholder')}
+                            {...register('landmark')}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>{t('complaint.severity')}</Label>
+                          <Select onValueChange={(value) => setValue('severity', value)} defaultValue="medium">
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="low">{t('priority.low')}</SelectItem>
+                              <SelectItem value="medium">{t('priority.medium')}</SelectItem>
+                              <SelectItem value="high">{t('priority.high')}</SelectItem>
+                              <SelectItem value="critical">{t('priority.critical')}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>{t('complaint.wastageObserved')}</Label>
+                          <Select onValueChange={(value) => setValue('wastageObserved', value)}>
+                            <SelectTrigger>
+                              <SelectValue placeholder={t('complaint.selectOption')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="true">{t('complaint.yes')}</SelectItem>
+                              <SelectItem value="false">{t('complaint.no')}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    )}
+
+                    {department && !['Electricity', 'Water'].includes(department) && (
+                      <div className="space-y-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                        <h3 className="font-medium text-gray-800">{t('complaint.otherIssue')}</h3>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="additionalInfo">{t('complaint.additionalInfo')}</Label>
+                          <Textarea
+                            id="additionalInfo"
+                            placeholder={t('complaint.additionalInfoPlaceholder')}
+                            {...register('additionalInfo')}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
 
                   <CardFooter className="p-6">
@@ -231,27 +333,28 @@ export default function RegisterComplaintPage() {
                       {isLoading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Registering...
+                          {t('complaint.submitting')}
                         </>
                       ) : (
-                        'Register Complaint'
+                        t('complaint.submit')
                       )}
                     </Button>
                   </CardFooter>
                 </form>
               </TabsContent>
 
-              <TabsContent value="chatbot" className="pt-4 px-6 pb-6">
-                <Chatbot />
-
-
+              <TabsContent value="chatbot">
+                <div className="p-6">
+                  <Chatbot
+                    onComplaintData={handleChatbotData}
+                    complaintFromChatbot={complaintFromChatbot}
+                  />
+                </div>
               </TabsContent>
             </Tabs>
           </Card>
         </motion.div>
       </div>
-
-
     </div>
   );
 }

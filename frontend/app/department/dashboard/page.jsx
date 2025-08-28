@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { getDepartmentComplaints, updateComplaintStatus } from '@/services/complaintService';
 import axiosInstance from '@/services/axiosInstance';
+import ChatRoom from '@/components/ChatRoom';
 
 export default function DepartmentDashboardPage() {
   const [complaints, setComplaints] = useState([]);
@@ -35,6 +37,8 @@ export default function DepartmentDashboardPage() {
   const [newStatus, setNewStatus] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [showChat, setShowChat] = useState(false);
+  const [chatComplaintNumber, setChatComplaintNumber] = useState('');
 
   const { isAuthenticated, isDepartment, loading, department } = useAuth();
   const router = useRouter();
@@ -53,14 +57,26 @@ export default function DepartmentDashboardPage() {
       if (!isDepartment) return;
 
       try {
-        const data = await getDepartmentComplaints();
-        setComplaints(data);
+        const response = await getDepartmentComplaints();
+        console.log('API Response:', response);
+
+        // Handle the response structure from the API
+        if (response.complaints && Array.isArray(response.complaints)) {
+          setComplaints(response.complaints);
+        } else if (Array.isArray(response)) {
+          setComplaints(response);
+        } else {
+          console.error('Unexpected response structure:', response);
+          setComplaints([]);
+        }
       } catch (error) {
+        console.error('Error fetching complaints:', error);
         toast({
           title: 'Error',
           description: 'Failed to load complaints',
           variant: 'destructive',
         });
+        setComplaints([]);
       } finally {
         setIsLoading(false);
       }
@@ -76,10 +92,13 @@ export default function DepartmentDashboardPage() {
     setIsSubmitting(true);
 
     try {
-      await updateComplaintStatus(selectedComplaint.complaintNumber, {
-        status: newStatus,
-        responseFromDept: responseText
-      });
+      const response = await axiosInstance.put(
+        `/api/departments/complaints/${selectedComplaint.complaintNumber}/status`,
+        {
+          status: newStatus,
+          responseFromDept: responseText
+        }
+      );
 
       // Update local state
       setComplaints(complaints.map(complaint =>
@@ -101,6 +120,7 @@ export default function DepartmentDashboardPage() {
       setNewStatus('');
 
     } catch (error) {
+      console.error('Update error:', error);
       toast({
         title: 'Update Failed',
         description: error.response?.data?.message || 'Failed to update complaint',
@@ -122,11 +142,14 @@ export default function DepartmentDashboardPage() {
   };
 
   // Filter complaints based on search query and status filter
-  const filteredComplaints = complaints.filter(complaint => {
+  const filteredComplaints = (complaints || []).filter(complaint => {
+    if (!complaint) return false;
+
     const matchesSearch =
-      complaint.complaintNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      complaint.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (complaint.userId && complaint.userId.toLowerCase().includes(searchQuery.toLowerCase()));
+      (complaint.complaintNumber || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (complaint.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (complaint.userId?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (complaint.description || '').toLowerCase().includes(searchQuery.toLowerCase());
 
     const matchesStatus = statusFilter === 'all' || complaint.status === statusFilter;
 
@@ -225,7 +248,7 @@ export default function DepartmentDashboardPage() {
               <CardContent className="p-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="text-3xl font-bold">
-                    {complaints.length}
+                    {complaints?.length || 0}
                   </div>
                   <p className="text-sm text-muted-foreground">Total Complaints</p>
                 </div>
@@ -236,7 +259,7 @@ export default function DepartmentDashboardPage() {
               <CardContent className="p-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="text-3xl font-bold text-amber-500">
-                    {complaints.filter(c => c.status === 'open').length}
+                    {complaints?.filter(c => c?.status === 'open')?.length || 0}
                   </div>
                   <p className="text-sm text-muted-foreground">Open</p>
                 </div>
@@ -247,7 +270,7 @@ export default function DepartmentDashboardPage() {
               <CardContent className="p-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="text-3xl font-bold text-blue-500">
-                    {complaints.filter(c => c.status === 'inProgress').length}
+                    {complaints?.filter(c => c?.status === 'inProgress')?.length || 0}
                   </div>
                   <p className="text-sm text-muted-foreground">In Progress</p>
                 </div>
@@ -258,7 +281,7 @@ export default function DepartmentDashboardPage() {
               <CardContent className="p-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="text-3xl font-bold text-green-500">
-                    {complaints.filter(c => c.status === 'closed').length}
+                    {complaints?.filter(c => c?.status === 'closed')?.length || 0}
                   </div>
                   <p className="text-sm text-muted-foreground">Resolved</p>
                 </div>
@@ -395,82 +418,94 @@ export default function DepartmentDashboardPage() {
                                     </Badge>
                                   </td>
                                   <td className="px-4 py-3 text-right">
-                                    <Dialog>
-                                      <DialogTrigger asChild>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => {
-                                            setSelectedComplaint(complaint);
-                                            setResponseText(complaint.responseFromDept || '');
-                                            setNewStatus(complaint.status);
-                                          }}
-                                        >
-                                          Update
-                                        </Button>
-                                      </DialogTrigger>
-                                      <DialogContent>
-                                        <DialogHeader>
-                                          <DialogTitle>Update Complaint</DialogTitle>
-                                          <DialogDescription>
-                                            Change status and provide response for complaint #{selectedComplaint?.complaintNumber}
-                                          </DialogDescription>
-                                        </DialogHeader>
-
-                                        <div className="grid gap-4 py-4">
-                                          <div className="space-y-2">
-                                            <Label>Complaint Title</Label>
-                                            <p className="font-medium">{selectedComplaint?.title}</p>
-                                          </div>
-
-                                          <div className="space-y-2">
-                                            <Label htmlFor="status">Update Status</Label>
-                                            <Select
-                                              value={newStatus}
-                                              onValueChange={setNewStatus}
-                                            >
-                                              <SelectTrigger>
-                                                <SelectValue placeholder="Select status" />
-                                              </SelectTrigger>
-                                              <SelectContent>
-                                                <SelectItem value="open">Open</SelectItem>
-                                                <SelectItem value="inProgress">In Progress</SelectItem>
-                                                <SelectItem value="closed">Closed</SelectItem>
-                                              </SelectContent>
-                                            </Select>
-                                          </div>
-
-                                          <div className="space-y-2">
-                                            <Label htmlFor="response">Department Response</Label>
-                                            <Textarea
-                                              id="response"
-                                              placeholder="Provide details about the resolution or current status..."
-                                              value={responseText}
-                                              onChange={(e) => setResponseText(e.target.value)}
-                                              rows={4}
-                                            />
-                                          </div>
-                                        </div>
-
-                                        <DialogFooter>
-                                          <Button variant="outline">Cancel</Button>
+                                    <div className="flex gap-2 justify-end">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setChatComplaintNumber(complaint.complaintNumber);
+                                          setShowChat(true);
+                                        }}
+                                      >
+                                        Chat
+                                      </Button>
+                                      <Dialog>
+                                        <DialogTrigger asChild>
                                           <Button
-                                            onClick={handleUpdateComplaint}
-                                            disabled={isSubmitting}
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                              setSelectedComplaint(complaint);
+                                              setResponseText(complaint.responseFromDept || '');
+                                              setNewStatus(complaint.status);
+                                            }}
                                           >
-                                            {isSubmitting && (
-                                              <span className="mr-2">
-                                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                </svg>
-                                              </span>
-                                            )}
-                                            Save Changes
+                                            Update
                                           </Button>
-                                        </DialogFooter>
-                                      </DialogContent>
-                                    </Dialog>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                          <DialogHeader>
+                                            <DialogTitle>Update Complaint</DialogTitle>
+                                            <DialogDescription>
+                                              Change status and provide response for complaint #{selectedComplaint?.complaintNumber}
+                                            </DialogDescription>
+                                          </DialogHeader>
+
+                                          <div className="grid gap-4 py-4">
+                                            <div className="space-y-2">
+                                              <Label>Complaint Title</Label>
+                                              <p className="font-medium">{selectedComplaint?.title}</p>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                              <Label htmlFor="status">Update Status</Label>
+                                              <Select
+                                                value={newStatus}
+                                                onValueChange={setNewStatus}
+                                              >
+                                                <SelectTrigger>
+                                                  <SelectValue placeholder="Select status" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="open">Open</SelectItem>
+                                                  <SelectItem value="inProgress">In Progress</SelectItem>
+                                                  <SelectItem value="closed">Closed</SelectItem>
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                              <Label htmlFor="response">Department Response</Label>
+                                              <Textarea
+                                                id="response"
+                                                placeholder="Provide details about the resolution or current status..."
+                                                value={responseText}
+                                                onChange={(e) => setResponseText(e.target.value)}
+                                                rows={4}
+                                              />
+                                            </div>
+                                          </div>
+
+                                          <DialogFooter>
+                                            <Button variant="outline">Cancel</Button>
+                                            <Button
+                                              onClick={handleUpdateComplaint}
+                                              disabled={isSubmitting}
+                                            >
+                                              {isSubmitting && (
+                                                <span className="mr-2">
+                                                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-primary-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                  </svg>
+                                                </span>
+                                              )}
+                                              Save Changes
+                                            </Button>
+                                          </DialogFooter>
+                                        </DialogContent>
+                                      </Dialog>
+                                    </div>
                                   </td>
                                 </tr>
                               ))
@@ -504,6 +539,21 @@ export default function DepartmentDashboardPage() {
           </Card>
         </div>
       </motion.div>
+
+      {/* Chat Room Modal */}
+      {showChat && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="w-full max-w-4xl">
+            <ChatRoom
+              complaintNumber={chatComplaintNumber}
+              onClose={() => {
+                setShowChat(false);
+                setChatComplaintNumber('');
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

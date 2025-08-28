@@ -8,45 +8,41 @@ import { AlignRight, X, LogOut, User, FileText, Home, MessageSquare } from 'luci
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import LanguageSelector from './LanguageSelector';
-import { translate } from '@/utils/translator';
+import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const pathname = usePathname();
   const { isAuthenticated, isDepartment, logout } = useAuth();
+  const { t } = useTranslation();
 
   const menuItems = [
     {
-      name: 'Home',
+      name: t('nav.home'),
       href: '/',
       icon: <Home className="h-4 w-4" />
     },
     ...(isAuthenticated && !isDepartment ? [
       {
-        name: 'Profile',
+        name: t('nav.profile'),
         href: '/profile',
         icon: <User className="h-4 w-4" />
       },
       {
-        name: 'Register Complaint',
+        name: t('home.registerComplaint'),
         href: '/complaint/register',
         icon: <MessageSquare className="h-4 w-4" />
       },
       {
-        name: 'Complaint History',
+        name: t('nav.complaints'),
         href: '/complaint/history',
-        icon: <FileText className="h-4 w-4" />
-      },
-      {
-        name: 'About Us',
-        href: '/about',
         icon: <FileText className="h-4 w-4" />
       }
     ] : []),
     ...(isDepartment ? [
       {
-        name: 'Department Dashboard',
+        name: t('nav.dashboard'),
         href: '/department/dashboard',
         icon: <FileText className="h-4 w-4" />
       }
@@ -66,21 +62,21 @@ const Navbar = () => {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className='flex justify-center items-center'>
-          <Image 
-  src="/images/logo.png" 
-  alt="Logo" 
-  width={50} 
-  height={50}
-/>
-<div className="flex flex-col">
-            <Link 
-              href="/"
-              className="text-2xl font-bold tracking-wide"
-            >
-              GrievEase
-            </Link>
-            <span className="text-xs font-light text-yellow-100">Government of India | Public Grievance Portal</span>
-          </div>
+            <Image
+              src="/images/logo.png"
+              alt="Logo"
+              width={50}
+              height={50}
+            />
+            <div className="flex flex-col">
+              <Link
+                href="/"
+                className="text-2xl font-bold tracking-wide"
+              >
+                GrievEase
+              </Link>
+              <span className="text-xs font-light text-yellow-100">Government of India | Public Grievance Portal</span>
+            </div>
           </div>
 
           <div className="hidden md:flex md:items-center md:gap-4">
@@ -89,14 +85,13 @@ const Navbar = () => {
                 key={item.href}
                 href={item.href}
               >
-                <Button 
+                <Button
                   variant="ghost"
-                  className={`flex items-center gap-2 rounded-md px-3 py-2 transition-colors ${
-                    pathname === item.href ? 'bg-blue-700' : 'hover:bg-blue-800 hover:text-white'
-                  }`}
+                  className={`flex items-center gap-2 rounded-md px-3 py-2 transition-colors ${pathname === item.href ? 'bg-blue-700' : 'hover:bg-blue-800 hover:text-white'
+                    }`}
                 >
                   {item.icon}
-                  <span>{translate(item.name)}</span>
+                  <span>{item.name}</span>
                 </Button>
               </Link>
             ))}
@@ -104,29 +99,29 @@ const Navbar = () => {
             {!isAuthenticated && (
               <>
                 <Link href="/login">
-                  <Button 
+                  <Button
                     variant="ghost"
                     className="rounded-md hover:bg-blue-800"
                   >
-                    {translate('Login')}
+                    {t('nav.login')}
                   </Button>
                 </Link>
                 <Link href="/signup">
                   <Button className="rounded-md bg-white text-blue-900 hover:bg-gray-100">
-                    {translate('Signup')}
+                    {t('nav.signup')}
                   </Button>
                 </Link>
               </>
             )}
 
             {isAuthenticated && (
-              <Button 
+              <Button
                 variant="outline"
                 className="flex items-center gap-2 rounded-md border-white text-blue-800 hover:bg-blue-800 hover:text-white"
                 onClick={logout}
               >
                 <LogOut className="h-4 w-4" />
-                <span>Logout</span>
+                <span>{t('nav.logout')}</span>
               </Button>
             )}
 
@@ -136,8 +131,8 @@ const Navbar = () => {
           <div className="flex md:hidden">
             <LanguageSelector />
 
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="icon"
               onClick={toggleMenu}
               className="ml-2 text-white hover:bg-blue-800"
@@ -165,14 +160,13 @@ const Navbar = () => {
                   href={item.href}
                   onClick={closeMenu}
                 >
-                  <Button 
+                  <Button
                     variant="ghost"
-                    className={`w-full justify-start flex items-center gap-2 rounded-md px-3 py-2 ${
-                      pathname === item.href ? 'bg-blue-700' : ''
-                    }`}
+                    className={`w-full justify-start flex items-center gap-2 rounded-md px-3 py-2 ${pathname === item.href ? 'bg-blue-700' : ''
+                      }`}
                   >
                     {item.icon}
-                    <span>{translate(item.name)}</span>
+                    <span>{item.name}</span>
                   </Button>
                 </Link>
               ))}
@@ -180,18 +174,18 @@ const Navbar = () => {
               {!isAuthenticated && (
                 <div className="flex flex-col gap-2 mt-2 border-t border-gray-400 pt-2">
                   <Link href="/login" onClick={closeMenu}>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       className="w-full rounded-md hover:bg-blue-800"
                     >
-                      {translate('Login')}
+                      {t('nav.login')}
                     </Button>
                   </Link>
                   <Link href="/signup" onClick={closeMenu}>
-                    <Button 
+                    <Button
                       className="w-full rounded-md bg-white text-blue-900 hover:bg-gray-100"
                     >
-                      {translate('Signup')}
+                      {t('nav.signup')}
                     </Button>
                   </Link>
                 </div>
@@ -199,7 +193,7 @@ const Navbar = () => {
 
               {isAuthenticated && (
                 <div className="mt-2 border-t border-gray-400 pt-2">
-                  <Button 
+                  <Button
                     variant="outline"
                     className="w-full justify-start flex items-center gap-2 rounded-md border-white hover:bg-blue-800 text-blue-800 hover:text-white"
                     onClick={() => {
@@ -208,7 +202,7 @@ const Navbar = () => {
                     }}
                   >
                     <LogOut className="h-4 w-4" />
-                    <span>Logout</span>
+                    <span>{t('nav.logout')}</span>
                   </Button>
                 </div>
               )}

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Mic, Send, PauseCircle, Check } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -14,9 +15,8 @@ import { registerComplaint } from '@/services/complaintService';
 import { useToast } from '@/hooks/use-toast';
 
 export default function GrievanceChatbot({ onComplaintDataChange }) {
-  const [messages, setMessages] = useState([
-    { sender: 'bot', text: 'Welcome to the Grievance Portal! Please describe your issue.' }
-  ]);
+  const { t } = useTranslation();
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [session, setSession] = useState('');
@@ -33,6 +33,13 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
   const inputRef = useRef(null);
   const router = useRouter();
   const { toast } = useToast();
+
+  // Initialize welcome message when component mounts or language changes
+  useEffect(() => {
+    setMessages([
+      { sender: 'bot', text: t('chat.welcomeMessage', 'Welcome to the Grievance Portal! Please describe your issue.') }
+    ]);
+  }, [t]);
 
   // Generate session ID on first render
   useEffect(() => {

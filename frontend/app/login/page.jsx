@@ -10,11 +10,13 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 export default function LoginPage() {
   const { register, handleSubmit, formState: { errors } } = useForm();
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
+  const { t } = useTranslation();
 
   const onSubmit = async (data) => {
     setIsLoading(true);
@@ -36,26 +38,26 @@ export default function LoginPage() {
         <Card className="border border-gray-300 rounded-lg shadow-sm bg-white">
           <CardHeader className="text-center space-y-1">
             <CardTitle className="text-3xl font-serif font-semibold tracking-wide text-gray-800">
-              CITIZEN LOGIN
+              {t('auth.citizenLogin')}
             </CardTitle>
             <CardDescription className="text-sm text-gray-600">
-              Enter your credentials to access your account
+              {t('auth.enterCredentials')}
             </CardDescription>
           </CardHeader>
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t('auth.email')}</Label>
                 <Input
                   id="email"
                   type="email"
                   placeholder="your@email.com"
                   {...register('email', {
-                    required: 'Email is required',
+                    required: t('auth.emailRequired'),
                     pattern: {
                       value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                      message: 'Invalid email address'
+                      message: t('auth.validEmail')
                     }
                   })}
                 />
@@ -66,12 +68,12 @@ export default function LoginPage() {
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password">{t('auth.password')}</Label>
                   <Link
                     href="#"
                     className="text-sm text-blue-700 hover:underline"
                   >
-                    Forgot password?
+                    {t('auth.forgotPassword')}
                   </Link>
                 </div>
                 <Input
@@ -79,10 +81,10 @@ export default function LoginPage() {
                   type="password"
                   placeholder="••••••••"
                   {...register('password', {
-                    required: 'Password is required',
+                    required: t('auth.passwordRequired'),
                     minLength: {
                       value: 8,
-                      message: 'Password must be at least 8 characters'
+                      message: t('auth.passwordMin')
                     }
                   })}
                 />
@@ -101,28 +103,28 @@ export default function LoginPage() {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Logging in...
+                    {t('auth.signingIn')}
                   </>
                 ) : (
-                  'LOGIN'
+                  t('auth.loginButton')
                 )}
               </Button>
 
               <p className="text-sm text-center text-gray-600">
-                New user?{' '}
+                {t('auth.noAccount')}{' '}
                 <Link href="/signup" className="text-blue-700 hover:underline font-medium">
-                  Register here
+                  {t('auth.signupHere')}
                 </Link>
               </p>
 
               <p className="text-sm text-center text-gray-600">
-                Government Department{' '}
+                {t('auth.departmentLogin')}{' '}
                 <Link href="/department/login" className="text-blue-700 hover:underline font-medium">
-                  Login
+                  {t('auth.loginHere')}
                 </Link>
               </p>
 
-              <div className="flex items-center justify-center gap-2 pt-4 border-t pt-2 text-gray-500 text-xs">
+              <div className="flex items-center justify-center gap-2 pt-4 border-t text-gray-500 text-xs">
                 <Lock className="w-4 h-4" />
                 This is a secure Government of India website
               </div>

@@ -3,13 +3,15 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Clock, CheckCircle, AlertCircle, ChevronLeft, User, CalendarDays, Mail } from 'lucide-react';
+import { Clock, CheckCircle, AlertCircle, ChevronLeft, User, CalendarDays, Mail, MessageSquare } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import { trackComplaint } from '@/services/complaintService';
+import ChatRoom from '@/components/ChatRoom';
 import Link from 'next/link';
 
 // Generate static paths for complaint tracking
@@ -18,9 +20,11 @@ import Link from 'next/link';
 export default function TrackComplaintPage() {
   const [complaint, setComplaint] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showChat, setShowChat] = useState(false);
   const params = useParams();
   const complaintNumber = params.complaintNumber;
   const { toast } = useToast();
+  const { isAuthenticated, isUser } = useAuth();
 
   // Fetch complaint data
   useEffect(() => {
@@ -260,16 +264,46 @@ export default function TrackComplaintPage() {
                 </Link>
               </Button>
 
-              <Button
-                variant="secondary"
-                size="sm"
-              >
-                <User className="h-4 w-4 mr-2" />
-                Login for More Details
-              </Button>
+              <div className="flex gap-2">
+                {isAuthenticated && isUser && complaint.status !== 'closed' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowChat(true)}
+                  >
+                    <MessageSquare className="h-4 w-4 mr-2" />
+                    Chat with Department
+                  </Button>
+                )}
+
+                {!isAuthenticated && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    asChild
+                  >
+                    <Link href="/login">
+                      <User className="h-4 w-4 mr-2" />
+                      Login for More Features
+                    </Link>
+                  </Button>
+                )}
+              </div>
             </CardFooter>
           </Card>
         </motion.div>
+
+        {/* Chat Room Modal */}
+        {showChat && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="w-full max-w-4xl">
+              <ChatRoom
+                complaintNumber={complaintNumber}
+                onClose={() => setShowChat(false)}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
