@@ -424,7 +424,31 @@ async def handle_conversation(session_id: str, user_text: str, user_language: st
 
     update_session(session_id, {"data": updated_data})
 
-    if last_bot_action == "confirm_info":
+    # Check for special skip action
+    if "confirm all details now" in corrected_text.lower() or "skip" in corrected_text.lower():
+        logger.info(f"Session {session_id}: User wants to skip and confirm details. Forcing confirmation.")
+        complaint_data_for_frontend = {
+            "title": updated_data.get("title") or f"Complaint: {updated_data.get('department', 'General Issue')}"[:100],
+            "department": updated_data.get("department") or "Other",
+            "description": updated_data.get("description") or "Issue reported via chatbot",
+            "additionalDetails": {
+                "location_details": updated_data.get("address") or "Location not specified",
+                "issue_timing": updated_data.get("timing"),
+                "specific_details": updated_data.get("specific_details"),
+            }
+        }
+        # Clean up empty values
+        complaint_data_for_frontend["additionalDetails"] = {k: v for k, v in complaint_data_for_frontend["additionalDetails"].items() if v}
+        if not complaint_data_for_frontend["additionalDetails"]:
+             del complaint_data_for_frontend["additionalDetails"]
+
+        reply = "I'll submit your complaint with the information provided. Proceeding with registration..."
+        action = "trigger_registration"
+        complaint_ready = True
+        session["complaint_data_prepared"] = complaint_data_for_frontend
+        next_action_hint = "trigger_registration"
+        
+    elif last_bot_action == "confirm_info":
         if detected_intent == "confirmation_yes":
             logger.info(f"Session {session_id}: Confirmation received (Yes). Preparing data.")
             complaint_data_for_frontend = {
@@ -452,7 +476,7 @@ async def handle_conversation(session_id: str, user_text: str, user_language: st
             logger.info(f"Session {session_id}: Confirmation received (No). Asking what to change.")
             next_action_hint = "ask_change_details"
             action = "gather_info"
-            suggestions = ["Change Title", "Change Department", "Change Description", "Change Location", "Change Timing", "Change Specific Details"]
+            suggestions = []  # Remove confusing change options
             reply = await generate_ai_reply(session_id, history, corrected_text, next_action_hint, updated_data, suggested_question)
 
         else:
@@ -479,7 +503,7 @@ async def handle_conversation(session_id: str, user_text: str, user_language: st
             logger.info(f"Session {session_id}: Core complete. Asking specific detail: {suggested_question}")
             next_action_hint = "ask_next_question"
             action = "gather_info"
-            suggestions = ["Skip this detail", "Confirm all details now"]
+            suggestions = ["Confirm all details now"]  # Simplified suggestions
             reply = await generate_ai_reply(session_id, history, corrected_text, next_action_hint, updated_data, suggested_question)
         else:
             logger.info(f"Session {session_id}: Core complete. Asking for confirmation.")

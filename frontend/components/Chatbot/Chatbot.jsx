@@ -155,7 +155,14 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
 
       // Handle specific actions
       if (data.action === "trigger_registration" && data.complaint_ready) {
-        setIsDialogOpen(true);
+        // Auto-submit if triggered by "Confirm all details now"
+        if (userMessage === "Confirm all details now") {
+          setTimeout(() => {
+            submitComplaint();
+          }, 1000); // Give time to show the message
+        } else {
+          setIsDialogOpen(true);
+        }
       }
 
     } catch (error) {
@@ -183,15 +190,23 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
   };
 
   const handleSuggestion = (action) => {
-    setInput(action);
-    if (action === "Yes, submit" && complaintReady) {
+    if (action === "Confirm all details now") {
+      // Always send this to chatbot first to prepare data, then auto-submit
+      setInput(action);
+      setTimeout(() => {
+        handleSend();
+      }, 100);
+    } else if (action === "Yes, submit" && complaintReady) {
+      // Direct submission for confirmed ready complaints
       setTimeout(() => {
         submitComplaint();
       }, 100);
     } else {
+      // Send as regular message to chatbot
+      setInput(action);
       setTimeout(() => {
         handleSend();
-      }, 100); // Small delay to ensure input is updated
+      }, 100);
     }
   };
 
