@@ -34,7 +34,7 @@ except LookupError:
     nltk.data.find('tokenizers/punkt')
 
 # --- Gemini Setup ---
-GEMINI_API_KEY = "AIzaSyAyvahJXYciPiB7cnlmagzM5EDhw3tlBq8"
+GEMINI_API_KEY = "AIzaSyB3jbKkNpUh7TmuYjeLmZ-zKOZOTNiu3yw"
 GEMINI_MODEL_NAME = "gemini-1.5-flash"
 
 def initialize_gemini():
