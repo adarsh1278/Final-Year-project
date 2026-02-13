@@ -1,11 +1,12 @@
 import express from 'express';
-import { registerComplaint, getUserComplaints, trackComplaint, getUserChatMessages, respondToCloseRequest, saveUserChatMessage } from '../controllers/complaint.js';
+import { registerComplaint, getUserComplaints, trackComplaint, getUserChatMessages, respondToCloseRequest, saveUserChatMessage, submitUserFeedback, getUserComplaintStats } from '../controllers/complaint.js';
 import { userAuth } from '../middlewares/authMiddleware.js'
 import Complaint from '../models/Complaint.js';
 
 const router = express.Router();
 router.post("/register", userAuth, registerComplaint);
 router.get("/history", userAuth, getUserComplaints);
+router.get("/stats", userAuth, getUserComplaintStats);
 router.get("/track/:complaintNumber", trackComplaint);
 
 // Get complaint by complaint number
@@ -29,5 +30,6 @@ router.get('/number/:complaintNumber', async (req, res) => {
 router.get("/:complaintNumber/chat", userAuth, getUserChatMessages);
 router.post("/:complaintNumber/chat", userAuth, saveUserChatMessage);
 router.post("/:complaintNumber/close-response", userAuth, respondToCloseRequest);
+router.post("/:complaintNumber/feedback", userAuth, submitUserFeedback);
 
 export default router;

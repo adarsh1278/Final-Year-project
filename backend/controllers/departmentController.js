@@ -184,16 +184,33 @@ export const getComplaintById = async (req, res) => {
     const { complaintId } = req.params;
     const dept = await Department.findById(req.department.id);
 
-    const complaint = await Complaint.findOne({
-      _id: complaintId,
+    // Try finding by complaintNumber first, then by _id
+    let complaint = await Complaint.findOne({
+      complaintNumber: complaintId,
       department: dept.name
     }).populate('userId', 'name email phone');
+
+    if (!complaint) {
+      complaint = await Complaint.findOne({
+        _id: complaintId,
+        department: dept.name
+      }).populate('userId', 'name email phone');
+    }
+
+    // Also allow viewing if this department has a pending incoming transfer
+    if (!complaint) {
+      complaint = await Complaint.findOne({
+        complaintNumber: complaintId,
+        'pendingTransfer.isPending': true,
+        'pendingTransfer.toDepartment': dept.name
+      }).populate('userId', 'name email phone');
+    }
 
     if (!complaint) {
       return res.status(404).json({ message: "Complaint not found" });
     }
 
-    res.status(200).json(complaint);
+    res.status(200).json({ complaint });
   } catch (error) {
     console.error("Error fetching complaint:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -222,6 +239,11 @@ export const updateComplaintStatus = async (req, res) => {
       return res.status(404).json({ message: "Complaint not found" });
     }
 
+    // Block updates on closed/rejected complaints
+    if (['closed', 'rejected'].includes(complaint.status)) {
+      return res.status(400).json({ message: `Cannot update a ${complaint.status} complaint` });
+    }
+
     // Initialize arrays if they don't exist
     if (!complaint.feedback) {
       complaint.feedback = [];
@@ -238,6 +260,17 @@ export const updateComplaintStatus = async (req, res) => {
       if (status === 'resolved' || status === 'closed') {
         complaint.actualResolutionDate = new Date();
       }
+
+      // Add to tracking history
+      if (!complaint.trackingHistory) complaint.trackingHistory = [];
+      complaint.trackingHistory.push({
+        status: status,
+        message: responseFromDept || `Status changed from "${oldStatus}" to "${status}"`,
+        updatedBy: dept.name,
+        updatedByType: 'department',
+        department: dept.name,
+        timestamp: new Date()
+      });
 
       // Add status change to chat messages
       complaint.chatMessages.push({
@@ -713,7 +746,24 @@ export const getChatMessages = async (req, res) => {
     const complaint = await Complaint.findOne({ 
       complaintNumber,
       department: dept.name 
-    }).select('chatMessages closeRequest');
+    }).select('chatMessages closeRequest pendingTransfer');
+
+    // Also allow if this department has a pending incoming transfer
+    if (!complaint) {
+      const pendingComplaint = await Complaint.findOne({
+        complaintNumber,
+        'pendingTransfer.isPending': true,
+        'pendingTransfer.toDepartment': dept.name
+      }).select('chatMessages closeRequest pendingTransfer');
+      
+      if (!pendingComplaint) {
+        return res.status(404).json({ message: "Complaint not found" });
+      }
+      
+      const chatMessages = pendingComplaint.chatMessages || [];
+      const closeRequest = pendingComplaint.closeRequest || null;
+      return res.status(200).json({ messages: chatMessages, closeRequest });
+    }
 
     if (!complaint) {
       return res.status(404).json({ message: "Complaint not found" });
@@ -748,10 +798,19 @@ export const saveChatMessage = async (req, res) => {
       return res.status(404).json({ message: "Department not found" });
     }
 
-    const complaint = await Complaint.findOne({ 
+    let complaint = await Complaint.findOne({ 
       complaintNumber,
       department: dept.name 
     });
+
+    // Also allow if this department has a pending incoming transfer
+    if (!complaint) {
+      complaint = await Complaint.findOne({
+        complaintNumber,
+        'pendingTransfer.isPending': true,
+        'pendingTransfer.toDepartment': dept.name
+      });
+    }
 
     if (!complaint) {
       return res.status(404).json({ message: "Complaint not found" });
@@ -781,6 +840,315 @@ export const saveChatMessage = async (req, res) => {
     });
   } catch (error) {
     console.error("Error saving chat message:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Transfer/Reassign complaint to another department
+export const transferComplaint = async (req, res) => {
+  try {
+    const { complaintNumber } = req.params;
+    const { toDepartment, reason } = req.body;
+
+    if (!toDepartment || !reason) {
+      return res.status(400).json({ message: "Target department and reason are required" });
+    }
+
+    const dept = await Department.findById(req.department.id);
+    if (!dept) {
+      return res.status(404).json({ message: "Department not found" });
+    }
+
+    const complaint = await Complaint.findOne({
+      complaintNumber,
+      department: dept.name
+    });
+
+    if (!complaint) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    // Block transfer on closed/rejected/resolved complaints
+    if (['closed', 'rejected', 'resolved'].includes(complaint.status)) {
+      return res.status(400).json({ message: `Cannot transfer a ${complaint.status} complaint` });
+    }
+
+    // Check if there's already a pending transfer
+    if (complaint.pendingTransfer && complaint.pendingTransfer.isPending) {
+      return res.status(400).json({ message: "There is already a pending transfer for this complaint" });
+    }
+
+    if (toDepartment === dept.name) {
+      return res.status(400).json({ message: "Cannot transfer to the same department" });
+    }
+
+    const fromDepartment = complaint.department;
+    
+    // Create pending transfer instead of immediate transfer
+    complaint.pendingTransfer = {
+      isPending: true,
+      fromDepartment,
+      toDepartment,
+      reason,
+      requestedBy: dept.name,
+      requestedAt: new Date()
+    };
+
+    // Add to tracking history
+    if (!complaint.trackingHistory) complaint.trackingHistory = [];
+    complaint.trackingHistory.push({
+      status: complaint.status,
+      message: `Transfer requested from ${fromDepartment} to ${toDepartment}. Reason: ${reason}. Awaiting acceptance.`,
+      updatedBy: dept.name,
+      updatedByType: 'department',
+      department: fromDepartment,
+      timestamp: new Date()
+    });
+
+    // Add to chat messages
+    if (!complaint.chatMessages) complaint.chatMessages = [];
+    complaint.chatMessages.push({
+      message: `Transfer requested from ${fromDepartment} Department to ${toDepartment} Department. Reason: ${reason}. Waiting for ${toDepartment} to accept.`,
+      senderType: 'department',
+      senderId: dept.name,
+      senderName: `${dept.name} Department`,
+      messageType: 'message'
+    });
+
+    await complaint.save();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`complaint-${complaintNumber}`).emit('transfer-requested', {
+        complaintNumber,
+        fromDepartment,
+        toDepartment,
+        reason,
+        timestamp: new Date()
+      });
+    }
+
+    res.status(200).json({
+      message: `Transfer request sent to ${toDepartment} department. Awaiting acceptance.`,
+      complaint: {
+        complaintNumber: complaint.complaintNumber,
+        department: complaint.department,
+        pendingTransfer: complaint.pendingTransfer
+      }
+    });
+  } catch (error) {
+    console.error("Error transferring complaint:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Accept transfer request
+export const acceptTransfer = async (req, res) => {
+  try {
+    const { complaintNumber } = req.params;
+    
+    const dept = await Department.findById(req.department.id);
+    if (!dept) {
+      return res.status(404).json({ message: "Department not found" });
+    }
+
+    const complaint = await Complaint.findOne({
+      complaintNumber,
+      'pendingTransfer.isPending': true,
+      'pendingTransfer.toDepartment': dept.name
+    }).populate('userId', 'name email');
+
+    if (!complaint) {
+      return res.status(404).json({ message: "No pending transfer found for this complaint" });
+    }
+
+    const { fromDepartment, toDepartment, reason } = complaint.pendingTransfer;
+
+    // Move complaint to new department
+    complaint.department = toDepartment;
+
+    // Add transfer history entry
+    if (!complaint.transferHistory) complaint.transferHistory = [];
+    complaint.transferHistory.push({
+      fromDepartment,
+      toDepartment,
+      reason,
+      transferredBy: fromDepartment,
+      status: 'accepted',
+      respondedAt: new Date(),
+      timestamp: complaint.pendingTransfer.requestedAt
+    });
+
+    // Add to tracking history
+    if (!complaint.trackingHistory) complaint.trackingHistory = [];
+    complaint.trackingHistory.push({
+      status: complaint.status,
+      message: `Transfer accepted by ${toDepartment}. Complaint moved from ${fromDepartment} to ${toDepartment}.`,
+      updatedBy: dept.name,
+      updatedByType: 'department',
+      department: toDepartment,
+      timestamp: new Date()
+    });
+
+    // Add to chat messages
+    if (!complaint.chatMessages) complaint.chatMessages = [];
+    complaint.chatMessages.push({
+      message: `${toDepartment} Department has accepted the transfer. This complaint is now handled by ${toDepartment} Department.`,
+      senderType: 'department',
+      senderId: dept.name,
+      senderName: `${dept.name} Department`,
+      messageType: 'message'
+    });
+
+    // Assign to new department
+    complaint.assignedTo = dept._id;
+
+    // Clear pending transfer
+    complaint.pendingTransfer = { isPending: false };
+
+    await complaint.save();
+
+    // Emit socket events
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`complaint-${complaintNumber}`).emit('transfer-accepted', {
+        complaintNumber,
+        fromDepartment,
+        toDepartment,
+        timestamp: new Date()
+      });
+
+      // Notify user
+      io.to(`complaint-${complaintNumber}`).emit('new-message', {
+        id: Date.now(),
+        complaintNumber,
+        message: `Your complaint has been transferred from ${fromDepartment} to ${toDepartment} Department.`,
+        senderType: 'department',
+        senderId: dept.name,
+        senderName: `${toDepartment} Department`,
+        timestamp: new Date(),
+        type: 'message'
+      });
+    }
+
+    res.status(200).json({
+      message: `Transfer accepted. Complaint now assigned to ${toDepartment}.`,
+      complaint: {
+        complaintNumber: complaint.complaintNumber,
+        department: complaint.department,
+        transferHistory: complaint.transferHistory
+      }
+    });
+  } catch (error) {
+    console.error("Error accepting transfer:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Reject transfer request
+export const rejectTransfer = async (req, res) => {
+  try {
+    const { complaintNumber } = req.params;
+    const { rejectionReason } = req.body;
+    
+    const dept = await Department.findById(req.department.id);
+    if (!dept) {
+      return res.status(404).json({ message: "Department not found" });
+    }
+
+    const complaint = await Complaint.findOne({
+      complaintNumber,
+      'pendingTransfer.isPending': true,
+      'pendingTransfer.toDepartment': dept.name
+    });
+
+    if (!complaint) {
+      return res.status(404).json({ message: "No pending transfer found for this complaint" });
+    }
+
+    const { fromDepartment, toDepartment, reason } = complaint.pendingTransfer;
+
+    // Add rejected transfer to transfer history
+    if (!complaint.transferHistory) complaint.transferHistory = [];
+    complaint.transferHistory.push({
+      fromDepartment,
+      toDepartment,
+      reason,
+      transferredBy: fromDepartment,
+      status: 'rejected',
+      respondedAt: new Date(),
+      rejectionReason: rejectionReason || 'Transfer rejected',
+      timestamp: complaint.pendingTransfer.requestedAt
+    });
+
+    // Add to tracking history
+    if (!complaint.trackingHistory) complaint.trackingHistory = [];
+    complaint.trackingHistory.push({
+      status: complaint.status,
+      message: `Transfer to ${toDepartment} was rejected. Reason: ${rejectionReason || 'Not specified'}. Complaint remains with ${fromDepartment}.`,
+      updatedBy: dept.name,
+      updatedByType: 'department',
+      department: fromDepartment,
+      timestamp: new Date()
+    });
+
+    // Add to chat messages
+    if (!complaint.chatMessages) complaint.chatMessages = [];
+    complaint.chatMessages.push({
+      message: `${toDepartment} Department has rejected the transfer request. Reason: ${rejectionReason || 'Not specified'}. Complaint remains with ${fromDepartment} Department.`,
+      senderType: 'department',
+      senderId: dept.name,
+      senderName: `${dept.name} Department`,
+      messageType: 'message'
+    });
+
+    // Clear pending transfer
+    complaint.pendingTransfer = { isPending: false };
+
+    await complaint.save();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`complaint-${complaintNumber}`).emit('transfer-rejected', {
+        complaintNumber,
+        fromDepartment,
+        toDepartment,
+        rejectionReason,
+        timestamp: new Date()
+      });
+    }
+
+    res.status(200).json({
+      message: `Transfer rejected. Complaint remains with ${fromDepartment}.`,
+      complaint: {
+        complaintNumber: complaint.complaintNumber,
+        department: complaint.department
+      }
+    });
+  } catch (error) {
+    console.error("Error rejecting transfer:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Get incoming transfer requests for department
+export const getIncomingTransfers = async (req, res) => {
+  try {
+    const dept = await Department.findById(req.department.id);
+    if (!dept) {
+      return res.status(404).json({ message: "Department not found" });
+    }
+
+    const complaints = await Complaint.find({
+      'pendingTransfer.isPending': true,
+      'pendingTransfer.toDepartment': dept.name
+    }).populate('userId', 'name email phone').sort({ 'pendingTransfer.requestedAt': -1 });
+
+    res.status(200).json({ transfers: complaints });
+  } catch (error) {
+    console.error("Error fetching incoming transfers:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

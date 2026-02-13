@@ -73,42 +73,44 @@ export default function ComplaintHistoryPage() {
   }
 
   return (
-    <div >
+    <div className="bg-gray-50 min-h-[calc(100vh-200px)]">
 
       {/* Breadcrumb */}
-      <div className="bg-gray-100 py-2 border-b border-gray-200 font-sans">
+      <div className="bg-white py-2.5 border-b border-gray-200 shadow-sm">
         <div className="container mx-auto px-4">
-          <div className="text-sm text-gray-600">
-            <Link href="/" className="text-blue-700 hover:underline">Home</Link> &gt; 
-            <Link href="/complaint/register" className="text-blue-600 hover:underline ml-1"> Register Complaint</Link> &gt; 
-            <span className="font-medium text-gray-800"> Complaint History</span>
+          <div className="text-sm text-gray-500">
+            <Link href="/" className="text-blue-700 hover:underline">Home</Link>
+            <span className="mx-1.5 text-gray-300">/</span>
+            <Link href="/complaint/register" className="text-blue-600 hover:underline">Register Complaint</Link>
+            <span className="mx-1.5 text-gray-300">/</span>
+            <span className="font-medium text-gray-800">Complaint History</span>
           </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-12 font-serif text-gray-800">
+      <div className="container mx-auto px-4 py-10">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <Card className="shadow-md border border-gray-300">
-          <CardHeader className="bg-blue-50 border-b border-gray-200 p-6 rounded-t-md">
+        <Card className="shadow-xl border-0 overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-900 to-blue-800 p-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <CardTitle className="text-3xl text-blue-900 font-semibold">
+                <CardTitle className="text-2xl text-white font-bold">
                   Complaint History
                 </CardTitle>
-                <CardDescription className="text-gray-600 text-sm mt-1">
+                <CardDescription className="text-blue-200 text-sm mt-1">
                   View and track your registered complaints with government departments.
                 </CardDescription>
               </div>
 
               <div className="relative w-full md:w-72">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   placeholder="Search by title, number, dept..."
-                  className="pl-9 bg-white border border-gray-300 text-sm"
+                  className="pl-9 bg-white/10 border-white/20 text-white placeholder:text-blue-200/50 text-sm"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />

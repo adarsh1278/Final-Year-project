@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Send, PauseCircle, Check } from 'lucide-react';
+import { Mic, Send, PauseCircle, Check, LogIn } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import {
@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { registerComplaint } from '@/services/complaintService';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function GrievanceChatbot({ onComplaintDataChange }) {
   const { t } = useTranslation();
@@ -33,6 +34,7 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
   const inputRef = useRef(null);
   const router = useRouter();
   const { toast } = useToast();
+  const { isAuthenticated, isUser } = useAuth();
 
   // Initialize welcome message when component mounts or language changes
   useEffect(() => {
@@ -162,12 +164,15 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
 
       // Handle specific actions
       if (data.action === "trigger_registration" && data.complaint_ready) {
-        // Auto-submit if triggered by "Confirm all details now"
-        if (userMessage === "Confirm all details now") {
-          setTimeout(() => {
-            submitComplaint();
-          }, 1000); // Give time to show the message
+        if (!isAuthenticated || !isUser) {
+          // User is not logged in, prompt to login
+          setMessages(prev => [...prev, {
+            sender: 'bot',
+            text: 'You need to be logged in to register a complaint. Please login first and then try again.'
+          }]);
+          setSuggestionActions(['Go to Login']);
         } else {
+          // Show confirmation dialog
           setIsDialogOpen(true);
         }
       }
@@ -197,38 +202,49 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
   };
 
   const handleSuggestion = (action) => {
+    if (action === 'Go to Login') {
+      router.push('/login');
+      return;
+    }
     if (action === "Confirm all details now") {
-      // Always send this to chatbot first to prepare data, then auto-submit
       setInput(action);
-      setTimeout(() => {
-        handleSend();
-      }, 100);
+      setTimeout(() => handleSend(), 100);
     } else if (action === "Yes, submit" && complaintReady) {
-      // Direct submission for confirmed ready complaints
-      setTimeout(() => {
-        submitComplaint();
-      }, 100);
+      if (!isAuthenticated || !isUser) {
+        setMessages(prev => [...prev, {
+          sender: 'bot',
+          text: 'You need to be logged in to register a complaint. Please login first.'
+        }]);
+        setSuggestionActions(['Go to Login']);
+      } else {
+        setIsDialogOpen(true);
+      }
     } else {
-      // Send as regular message to chatbot
       setInput(action);
-      setTimeout(() => {
-        handleSend();
-      }, 100);
+      setTimeout(() => handleSend(), 100);
     }
   };
 
   const submitComplaint = async () => {
+    if (!isAuthenticated || !isUser) {
+      toast({
+        title: "Login Required",
+        description: "Please login to register a complaint.",
+        variant: "destructive",
+      });
+      setIsDialogOpen(false);
+      return;
+    }
+
     setIsSubmittingComplaint(true);
 
     try {
-      // Submit to your actual backend
-      const response = await registerComplaint(complaintData);
-      const result = await response;
+      const result = await registerComplaint(complaintData);
 
       // Add success message to chat
       setMessages(prev => [...prev, {
         sender: 'bot',
-        text: `Your complaint has been successfully registered with reference number: ${result.complaintNumber}. You can use this number to track your complaint status.`
+        text: `✅ Your complaint has been successfully registered!\n\nReference Number: ${result.complaintNumber}\n\nYou can use this number to track your complaint status.`
       }]);
 
       // Show toast notification

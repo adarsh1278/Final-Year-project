@@ -47,7 +47,7 @@ const VoiceInput = ({ onTranscriptChange, className, placeholder = "Speak to ent
   
   if (!isSupported) {
     return (
-      <div className="text-muted-foreground text-sm">
+      <div className="text-gray-500 text-sm">
         Voice recognition is not supported in your browser.
       </div>
     );

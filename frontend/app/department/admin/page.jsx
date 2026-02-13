@@ -158,7 +158,7 @@ export default function DepartmentAdminDashboard() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Total Complaints</CardTitle>
-                            <FileText className="h-4 w-4 text-muted-foreground" />
+                            <FileText className="h-4 w-4 text-gray-400" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{stats?.totalComplaints || 0}</div>
@@ -168,7 +168,7 @@ export default function DepartmentAdminDashboard() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Open Complaints</CardTitle>
-                            <Clock className="h-4 w-4 text-muted-foreground" />
+                            <Clock className="h-4 w-4 text-gray-400" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold text-blue-600">
@@ -180,7 +180,7 @@ export default function DepartmentAdminDashboard() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Resolved</CardTitle>
-                            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+                            <CheckCircle className="h-4 w-4 text-gray-400" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold text-green-600">
@@ -192,7 +192,7 @@ export default function DepartmentAdminDashboard() {
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Avg Resolution Days</CardTitle>
-                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                            <TrendingUp className="h-4 w-4 text-gray-400" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">

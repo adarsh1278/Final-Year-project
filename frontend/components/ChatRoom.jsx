@@ -361,7 +361,7 @@ import {
                             {/* Messages Area */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
                                 {messages.length === 0 ? (
-                                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                                    <div className="flex items-center justify-center h-full text-gray-500">
                                         <div className="text-center">
                                             <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
                                             <p>No messages yet. Start the conversation!</p>
@@ -437,7 +437,7 @@ import {
                                                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
                                                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                                                 </div>
-                                                <span className="text-xs text-muted-foreground">{t('common.typing')}</span>
+                                                <span className="text-xs text-gray-500">{t('common.typing')}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -486,8 +486,8 @@ import {
 
                     {closeRequest && (
                         <div className="py-4">
-                            <p className="text-sm text-muted-foreground mb-2">Reason:</p>
-                            <p className="text-sm border p-2 rounded bg-muted">
+                            <p className="text-sm text-gray-500 mb-2">Reason:</p>
+                            <p className="text-sm border p-2 rounded bg-gray-50">
                                 {closeRequest.reason}
                             </p>
                         </div>

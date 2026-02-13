@@ -62,3 +62,66 @@ export const respondToCloseRequest = async (complaintNumber, responseData) => {
     throw error;
   }
 };
+
+export const submitUserFeedback = async (complaintNumber, feedbackData) => {
+  try {
+    const response = await axiosInstance.post(`/api/complaints/${complaintNumber}/feedback`, feedbackData);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const getUserComplaintStats = async () => {
+  try {
+    const response = await axiosInstance.get('/api/complaints/stats');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const transferComplaint = async (complaintNumber, transferData) => {
+  try {
+    const response = await axiosInstance.post(`/api/departments/complaints/${complaintNumber}/transfer`, transferData);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const requestCloseComplaint = async (complaintNumber, reason) => {
+  try {
+    const response = await axiosInstance.post(`/api/departments/complaints/${complaintNumber}/request-close`, { reason });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const getIncomingTransfers = async () => {
+  try {
+    const response = await axiosInstance.get('/api/departments/transfers/incoming');
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const acceptTransferRequest = async (complaintNumber) => {
+  try {
+    const response = await axiosInstance.post(`/api/departments/complaints/${complaintNumber}/accept-transfer`);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export const rejectTransferRequest = async (complaintNumber, rejectionReason) => {
+  try {
+    const response = await axiosInstance.post(`/api/departments/complaints/${complaintNumber}/reject-transfer`, { rejectionReason });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};

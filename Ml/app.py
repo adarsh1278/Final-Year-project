@@ -1,53 +1,27 @@
-# --- Imports ---
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Dict, Any, List, Optional, Literal, Union
-import re
-import string
-import nltk
-import os
-import sys
 import asyncio
 import json
-import traceback
-import time
-import hashlib
-import google.generativeai as genai
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import logging
+import os
+import re
+from typing import Any, Dict, List, Literal, Optional, Union
 
-# --- Logging Setup ---
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+try:
+    import google.generativeai as genai
+    from google.generativeai.types import HarmBlockThreshold, HarmCategory
+except Exception:  # pragma: no cover - import failure handled at runtime
+    genai = None
+    HarmBlockThreshold = None
+    HarmCategory = None
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- NLTK Setup ---
-nltk_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nltk_data')
-os.makedirs(nltk_data_dir, exist_ok=True)
-nltk.data.path.append(nltk_data_dir)
-try:
-    nltk.data.find('tokenizers/punkt')
-    logger.info("NLTK 'punkt' tokenizer found.")
-except LookupError:
-    logger.info("Downloading 'punkt' tokenizer...")
-    nltk.download('punkt', download_dir=nltk_data_dir)
-    nltk.data.find('tokenizers/punkt')
 
-# --- Gemini Setup ---
-GEMINI_API_KEY = "AIzaSyB3jbKkNpUh7TmuYjeLmZ-zKOZOTNiu3yw"
-GEMINI_MODEL_NAME = "gemini-1.5-flash"
-
-def initialize_gemini():
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        return genai.GenerativeModel(GEMINI_MODEL_NAME)
-    except Exception as e:
-        logger.error(f"Gemini init error: {e}")
-        return None
-
-gemini_model = initialize_gemini()
-
-# --- FastAPI App ---
 app = FastAPI(title="Smart Grievance Chatbot")
 app.add_middleware(
     CORSMiddleware,
@@ -57,11 +31,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Data Models ---
+
 class UserMessage(BaseModel):
     session_id: str
     text: str
-    language: Optional[str] = 'en'
+    language: Optional[str] = "en"
+
 
 class BotResponse(BaseModel):
     reply: str
@@ -70,487 +45,858 @@ class BotResponse(BaseModel):
     detected_intent: Optional[str] = None
     corrected_text: Optional[str] = None
     department: Optional[str] = None
-    action: Optional[Literal['gather_info', 'confirm_info', 'trigger_registration', 'reset', 'post_registration']] = None
+    action: Optional[
+        Literal[
+            "gather_info",
+            "confirm_info",
+            "trigger_registration",
+            "reset",
+            "post_registration",
+        ]
+    ] = None
     complaint_data: Optional[Dict[str, Any]] = None
     complaint_ready: Optional[bool] = None
 
-# --- In-Memory Session Storage ---
+
 sessions: Dict[str, Dict[str, Any]] = {}
 
-# --- Constants and Dictionaries ---
-spelling_corrections = {
-    "electisity": "electricity", "watter": "water", "potholse": "potholes",
+DATA_KEYS = ["department", "description", "address", "timing", "specific_details", "title"]
+DEPARTMENT_OPTIONS = ["Electricity", "Water", "Roads", "Sanitation", "Parks", "Other"]
+REQUIRED_FIELDS = ["department", "description", "address", "timing", "specific_details"]
+
+SPELLING_CORRECTIONS = {
+    "electisity": "electricity",
+    "watter": "water",
+    "potholse": "potholes",
     "strret": "street",
-}
-department_keywords = {
-    "Electricity": ["electricity", "power", "light", "outage", "streetlight"],
-    "Water": ["water", "pipe", "leak", "tap", "sewage"],
-    "Roads": ["road", "pothole", "street", "traffic", "signal"],
-    "Sanitation": ["garbage", "trash", "waste", "collection", "cleaning"],
-    "Parks": ["park", "playground", "tree"],
-    "Other": ["other", "general", "issue"]
-}
-intent_patterns = {
-    "greeting": [r"\b(hi|hello|hey)\b"],
-    "farewell": [r"\b(bye|goodbye|thanks|thank you)\b"],
-    "status_check": [r"\b(status|update|tracking)\b"],
-    "restart": [r"\b(start over|restart|reset)\b"],
-    "help": [r"\b(help|assist|support)\b"],
-    "cancel": [r"\b(cancel|stop|forget it)\b"],
-    "confirmation_yes": [r"\b(yes|confirm|ok|okay|submit|register|proceed|correct|right|it's correct|that's right)\b"],
-    "confirmation_no": [r"\b(no|wait|add|more|change|wrong|incorrect|cancel|not correct)\b"],
+    "deaprtment": "department",
+    "folllow": "follow",
+    "follup": "follow up",
 }
 
-# --- Helper Functions ---
+FIELD_QUESTIONS = {
+    "department": "Which department should handle this issue? Choose Electricity, Water, Roads, Sanitation, Parks, or Other.",
+    "description": "Please describe the issue clearly so the department can understand the exact problem.",
+    "address": "Please share the exact address or landmark where this issue is happening.",
+    "timing": "When did this issue start or when did you last observe it?",
+    "specific_details": "Please share one more specific detail (severity, size, frequency, or impact).",
+}
+
+STATUS_PATTERNS = {
+    "greeting": [r"\b(hi|hello|hey)\b"],
+    "farewell": [r"\b(bye|goodbye|thanks|thank you)\b"],
+    "status_check": [r"\b(status|update|tracking|track)\b"],
+    "restart": [r"\b(start over|restart|reset|new complaint)\b"],
+    "help": [r"\b(help|assist|support)\b"],
+    "cancel": [r"\b(cancel|stop|forget it|drop this)\b"],
+}
+
+YES_PATTERN = re.compile(
+    r"\b(yes|yup|yeah|ok|okay|confirm|submit|proceed|correct|right|go ahead)\b"
+)
+NO_PATTERN = re.compile(r"\b(no|nope|wrong|incorrect|change|edit|not correct)\b")
+
+INVALID_VALUES = {"", "unknown", "none", "null", "n/a", "na", "not provided"}
+
+_gemini_model = None
+_gemini_error = None
+
+
+def _safe_lower(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def _clean_text(text: Optional[str]) -> Optional[str]:
+    if text is None:
+        return None
+    cleaned = re.sub(r"\s+", " ", str(text)).strip(" \t\n\r,.-")
+    return cleaned or None
+
+
+def _meaningful(value: Optional[str]) -> bool:
+    if value is None:
+        return False
+    cleaned = _safe_lower(str(value))
+    return cleaned not in INVALID_VALUES
+
+
+def _normalize_department(value: Optional[str]) -> Optional[str]:
+    if not _meaningful(value):
+        return None
+    candidate = _clean_text(value)
+    if not candidate:
+        return None
+
+    for option in DEPARTMENT_OPTIONS:
+        if candidate.lower() == option.lower():
+            return option
+
+    lowered = candidate.lower()
+    keyword_map = {
+        "electric": "Electricity",
+        "power": "Electricity",
+        "water": "Water",
+        "sewage": "Water",
+        "road": "Roads",
+        "street": "Roads",
+        "garbage": "Sanitation",
+        "waste": "Sanitation",
+        "park": "Parks",
+        "tree": "Parks",
+    }
+    for keyword, department in keyword_map.items():
+        if keyword in lowered:
+            return department
+
+    return "Other"
+
+
+def correct_spelling(text: str) -> str:
+    def replace_word(match: re.Match) -> str:
+        word = match.group(0)
+        replacement = SPELLING_CORRECTIONS.get(word.lower())
+        if not replacement:
+            return word
+        if word.isupper():
+            return replacement.upper()
+        if word[0].isupper():
+            return replacement.capitalize()
+        return replacement
+
+    return re.sub(r"[A-Za-z]+", replace_word, text)
+
+
+def recognize_intent(text: str) -> str:
+    lowered = _safe_lower(text)
+    for intent, patterns in STATUS_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, lowered):
+                return intent
+
+    if is_confirmation_yes(lowered):
+        return "confirmation_yes"
+    if is_confirmation_no(lowered):
+        return "confirmation_no"
+
+    yes_match = bool(YES_PATTERN.search(lowered))
+    no_match = bool(NO_PATTERN.search(lowered))
+    if yes_match and not no_match:
+        if len(lowered.split()) <= 4:
+            return "confirmation_yes"
+    if no_match and not yes_match:
+        if len(lowered.split()) <= 4:
+            return "confirmation_no"
+
+    return "unknown"
+
+
+def is_confirmation_yes(lowered_text: str) -> bool:
+    explicit = {
+        "yes",
+        "yes submit",
+        "y",
+        "ok",
+        "okay",
+        "confirm",
+        "submit",
+        "proceed",
+        "go ahead",
+        "correct",
+    }
+    if lowered_text in explicit:
+        return True
+    if re.match(r"^(yes|yup|yeah)\s*(,|$)", lowered_text):
+        return True
+    if re.search(r"\b(yes,?\s*submit|confirm and submit)\b", lowered_text):
+        return True
+    return False
+
+
+def is_confirmation_no(lowered_text: str) -> bool:
+    explicit = {
+        "no",
+        "nope",
+        "wrong",
+        "incorrect",
+        "change",
+        "edit",
+        "not correct",
+        "no change this",
+    }
+    if lowered_text in explicit:
+        return True
+    if re.match(r"^(no|nope)\s*(,|$)", lowered_text):
+        return True
+    if re.search(r"\b(no,?\s*change details|change details)\b", lowered_text):
+        return True
+    return False
+
+
 def get_session(session_id: str) -> Dict[str, Any]:
     if session_id not in sessions:
-        logger.info(f"Creating new session: {session_id}")
+        logger.info("Creating new session: %s", session_id)
         sessions[session_id] = {
-            "step": "start",
             "data": {
                 "department": None,
                 "description": None,
                 "address": None,
                 "timing": None,
-                "specific_details": "",
-                "title": None
+                "specific_details": None,
+                "title": None,
             },
             "conversation_history": [],
+            "last_bot_action": "gather_info",
+            "awaiting_field": None,
             "complaint_data_prepared": None,
-            "last_bot_action": None,
+            "warned_missing_key": False,
         }
-        initial_message = "Hello! I'm the Grievance Chatbot. Please describe the issue you're facing, including the location and when it started, if possible."
-        sessions[session_id]["conversation_history"].append({"role": "bot", "text": initial_message})
-        sessions[session_id]["last_bot_action"] = "gather_info"
-    if "data" not in sessions[session_id]: sessions[session_id]["data"] = {}
-    for key in ["department", "description", "address", "timing", "specific_details", "title"]:
-        if key not in sessions[session_id]["data"]:
-             sessions[session_id]["data"][key] = None if key not in ["specific_details"] else ""
-    if "last_bot_action" not in sessions[session_id]: sessions[session_id]["last_bot_action"] = "gather_info"
-    if "conversation_history" not in sessions[session_id]: sessions[session_id]["conversation_history"] = []
+        welcome = (
+            "Hello! I can register your complaint. Please describe your issue, location, and when it started."
+        )
+        sessions[session_id]["conversation_history"].append({"role": "bot", "text": welcome})
 
-    return sessions[session_id]
+    session = sessions[session_id]
+    if "data" not in session:
+        session["data"] = {}
+    for key in DATA_KEYS:
+        if key not in session["data"]:
+            session["data"][key] = None
+    if "conversation_history" not in session:
+        session["conversation_history"] = []
+    if "last_bot_action" not in session:
+        session["last_bot_action"] = "gather_info"
+    if "awaiting_field" not in session:
+        session["awaiting_field"] = None
+    if "warned_missing_key" not in session:
+        session["warned_missing_key"] = False
 
-def update_session(session_id: str, updates: Dict[str, Any]):
-    if session_id in sessions:
-        sessions[session_id].update(updates)
-        logger.debug(f"Session {session_id} updated: {updates}")
+    return session
 
-def add_history(session_id: str, role: str, text: str):
-    if session_id in sessions:
-        history = sessions[session_id].get("conversation_history", [])
-        if len(history) > 20:
-            sessions[session_id]["conversation_history"] = history[-20:]
-        sessions[session_id]["conversation_history"].append({"role": role, "text": text})
 
-def reset_session(session_id: str):
-    logger.info(f"Resetting session: {session_id}")
+def reset_session(session_id: str) -> Dict[str, Any]:
+    logger.info("Resetting session: %s", session_id)
     if session_id in sessions:
         del sessions[session_id]
     return get_session(session_id)
 
-def correct_spelling(text: str) -> str:
-    words = text.lower().split()
-    corrected_words = [spelling_corrections.get(word.strip(string.punctuation), word) for word in words]
-    return ' '.join(corrected_words)
 
-def recognize_intent(text: str) -> str:
-    text_lower = text.lower()
-    for intent, patterns in intent_patterns.items():
-        for pattern in patterns:
-            if re.search(pattern, text_lower):
-                return intent
-    return "unknown"
+def add_history(session_id: str, role: str, text: str) -> None:
+    if session_id not in sessions:
+        return
 
-async def extract_and_assess_details(session_id: str, history: List[Dict[str, str]], current_query: str, current_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Uses Gemini to extract details, update data, infer department, and assess completeness."""
-    if not gemini_model:
-        logger.error(f"Session {session_id}: Gemini model not available for extraction.")
-        return {"updated_data": current_data, "missing": ["department", "description", "address"], "assessment": "Gemini not available.", "next_question": "Could you please provide the department, description, and location?"}
+    history = sessions[session_id].get("conversation_history", [])
+    if len(history) >= 50:
+        sessions[session_id]["conversation_history"] = history[-49:]
+    sessions[session_id]["conversation_history"].append({"role": role, "text": text})
 
-    formatted_history = "\n".join([f"{entry['role'].capitalize()}: {entry['text']}" for entry in history])
-    current_data_str = json.dumps(current_data, indent=2)
 
-    core_fields = ["title", "department", "description", "address", "timing"]
-    essential_fields = ["department", "description", "address"]
-    other_details_field = "specific_details"
-    all_fields = core_fields + [other_details_field]
+def missing_fields(data: Dict[str, Any]) -> List[str]:
+    missing: List[str] = []
+    for field in REQUIRED_FIELDS:
+        if not _meaningful(data.get(field)):
+            missing.append(field)
+    return missing
 
-    prompt = f"""Analyze the following conversation history and the latest user message for a municipal grievance report.
 
-Current known data:
-{current_data_str}
+def generate_title(data: Dict[str, Any]) -> str:
+    existing_title = _clean_text(data.get("title"))
+    if existing_title:
+        return existing_title[:100]
 
-Conversation History:
-{formatted_history}
-User: {current_query}
+    department = _clean_text(data.get("department")) or "General"
+    description = _clean_text(data.get("description")) or "Municipal complaint"
+    title = f"{department}: {' '.join(description.split()[:10])}"
+    return title[:100]
 
-Department Keywords Hint (use if helpful): {json.dumps(department_keywords)}
 
-Tasks:
-1.  **Extract/Update Data:** Based *only* on the history and latest message, provide the most likely values for the fields ({all_fields}).
-    *   Infer the `department` based on the description/context. Only leave null if truly ambiguous.
-    *   Generate a concise `title` (max 15 words) summarizing the issue if not explicitly given.
-    *   Update fields if the new message contradicts or refines previous info.
-    *   Output this as a JSON object under the key \"extracted_data\". Use null for fields not mentioned or unclear.
-2.  **Identify Missing Core Info:** List the *core* fields ({core_fields}) that are still null or contain placeholder/unclear information in the *updated* data derived from task 1. Output this as a JSON list under the key \"missing_core_fields\".
-3.  **Assess Plausibility:** Briefly assess if the provided \'description\' and \'address\' seem plausible for a municipal complaint. Output this as a string under the key \"plausibility_assessment\".
-4.  **Suggest Next Question:** Based *only* on the \"missing_core_fields\" list from task 2:
-    *   If the list is NOT empty, suggest the *single most important* question to ask the user to gather one of the missing core fields (prioritize department, description, address, then timing, then title).
-    *   If the list IS empty (all core fields filled), suggest a specific, relevant question to gather more `{other_details_field}` based on the `department` and `description` (e.g., for Electricity/streetlight: 'Is the light flickering or completely out?'; for Sanitation/garbage: 'Is it a missed collection or overflowing bin?'). If no specific detail seems needed, suggest asking for confirmation.
-    *   Output this as a string under the key \"next_question_suggestion\".
+def confirmation_summary(data: Dict[str, Any]) -> str:
+    lines = [
+        "Please confirm the details:",
+        f"- Title: {generate_title(data)}",
+        f"- Department: {_clean_text(data.get('department')) or 'Not specified'}",
+        f"- Description: {_clean_text(data.get('description')) or 'Not specified'}",
+        f"- Location: {_clean_text(data.get('address')) or 'Not specified'}",
+        f"- Timing: {_clean_text(data.get('timing')) or 'Not specified'}",
+        f"- Specific Details: {_clean_text(data.get('specific_details')) or 'Not specified'}",
+        "",
+        "Is this information correct and complete?",
+    ]
+    return "\n".join(lines)
 
-Respond *only* with a valid JSON object containing these four keys: \"extracted_data\", \"missing_core_fields\", \"plausibility_assessment\", \"next_question_suggestion\".
-Example Output (missing timing):
-{{
-  \"extracted_data\": {{
-    \"title\": \"Street light out at Main and Elm\",
-    \"department\": \"Electricity\",
-    \"description\": \"The street light at the corner of Main St and Elm St is not working.\",
-    \"address\": \"Corner of Main St and Elm St\",
-    \"timing\": null,
-    \"specific_details\": null
-  }},
-  \"missing_core_fields\": [\"timing\"],
-  \"plausibility_assessment\": \"Description and address seem plausible.\",
-  \"next_question_suggestion\": \"When did you first notice the street light was out?\"
-}}
-Example Output (core complete, asking specific detail):
-{{
-  \"extracted_data\": {{
-    \"title\": \"Pothole on Oak Avenue\",
-    \"department\": \"Roads\",
-    \"description\": \"There is a large pothole causing issues for traffic.\",
-    \"address\": \"Approx 123 Oak Avenue, near the park entrance\",
-    \"timing\": \"Appeared last week after the rain\",
-    \"specific_details\": null
-  }},
-  \"missing_core_fields\": [],
-  \"plausibility_assessment\": \"Description and address seem plausible.\",
-  \"next_question_suggestion\": \"How large is the pothole, approximately?\"
-}}
-"""
+
+def build_complaint_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    complaint = {
+        "title": generate_title(data),
+        "department": _normalize_department(data.get("department")) or "Other",
+        "description": _clean_text(data.get("description")) or "Issue reported via chatbot",
+        "additionalDetails": {
+            "location_details": _clean_text(data.get("address")) or "Location not specified",
+            "issue_timing": _clean_text(data.get("timing")),
+            "specific_details": _clean_text(data.get("specific_details")),
+        },
+    }
+
+    complaint["additionalDetails"] = {
+        k: v for k, v in complaint["additionalDetails"].items() if _meaningful(v)
+    }
+    if not complaint["additionalDetails"]:
+        del complaint["additionalDetails"]
+
+    return complaint
+
+
+def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
+    if not text:
+        return None
+
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```(?:json)?", "", stripped).strip()
+        stripped = re.sub(r"```$", "", stripped).strip()
 
     try:
-        logger.info(f"Session {session_id}: Sending extraction prompt to Gemini.")
-        response = await asyncio.to_thread(
-            gemini_model.generate_content,
-            prompt,
-            generation_config={"temperature": 0.2, "response_mime_type": "application/json"},
-            safety_settings={
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            }
-        )
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
 
-        if response.parts:
-            response_text = response.text.strip()
-            logger.debug(f"Session {session_id}: Gemini extraction raw response: {response_text}")
-            if response_text.startswith("```json"):
-                response_text = response_text[7:-3].strip()
-            elif response_text.startswith("```"):
-                 response_text = response_text[3:-3].strip()
+    start = stripped.find("{")
+    end = stripped.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidate = stripped[start : end + 1]
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            return None
 
-            try:
-                analysis = json.loads(response_text)
-                logger.info(f"Session {session_id}: Gemini analysis received: {analysis}")
+    return None
 
-                updated_data = current_data.copy()
-                for key in all_fields:
-                    if key not in updated_data:
-                        updated_data[key] = None if key != other_details_field else ""
-                extracted = analysis.get("extracted_data", {})
-                if isinstance(extracted, dict):
-                    for key in all_fields:
-                        if key in extracted and extracted[key] is not None:
-                            updated_data[key] = extracted[key]
-                else:
-                    logger.warning(f"Session {session_id}: Gemini extracted_data was not a dict: {extracted}")
 
-                missing_core = analysis.get("missing_core_fields", core_fields)
-                if not isinstance(missing_core, list):
-                    logger.warning(f"Session {session_id}: Gemini missing_core_fields was not a list: {missing_core}")
-                    missing_core = core_fields
+def _format_history_for_prompt(history: List[Dict[str, str]], limit: int = 14) -> str:
+    recent = history[-limit:]
+    lines = []
+    for item in recent:
+        role = item.get("role", "user").capitalize()
+        text = item.get("text", "")
+        lines.append(f"{role}: {text}")
+    return "\n".join(lines)
 
-                assessment = analysis.get("plausibility_assessment", "Assessment failed.")
-                next_question = analysis.get("next_question_suggestion", "Could you please provide more details?")
 
-                return {
-                    "updated_data": updated_data,
-                    "missing": missing_core,
-                    "assessment": assessment,
-                    "next_question": next_question
-                }
-            except json.JSONDecodeError as json_e:
-                logger.error(f"Session {session_id}: Failed to parse Gemini JSON response: {json_e}\nRaw response: {response_text}")
-                missing_fallback = [f for f in core_fields if not current_data.get(f)]
-                return {"updated_data": current_data, "missing": missing_fallback, "assessment": "Failed to parse AI analysis.", "next_question": "Sorry, I had trouble understanding that. Could you rephrase?"}
-
-        elif response.prompt_feedback.block_reason:
-            logger.warning(f"Session {session_id}: Gemini extraction prompt blocked: {response.prompt_feedback.block_reason}")
-            missing_fallback = [f for f in core_fields if not current_data.get(f)]
-            return {"updated_data": current_data, "missing": missing_fallback, "assessment": "AI response blocked.", "next_question": "My response was blocked. Could you please rephrase?"}
-        else:
-             logger.error(f"Session {session_id}: Gemini extraction returned no parts.")
-             missing_fallback = [f for f in core_fields if not current_data.get(f)]
-             return {"updated_data": current_data, "missing": missing_fallback, "assessment": "AI analysis failed.", "next_question": "Sorry, I couldn't process that. Could you try again?"}
-
-    except Exception as e:
-        logger.error(f"Session {session_id}: Error during Gemini extraction: {e}", exc_info=True)
-        missing_fallback = [f for f in core_fields if not current_data.get(f)]
-        return {"updated_data": current_data, "missing": missing_fallback, "assessment": "Error during AI analysis.", "next_question": "Sorry, an error occurred. Could you rephrase?"}
-
-async def generate_confirmation_summary(data: Dict[str, Any]) -> str:
-    """Generates a confirmation summary string with updated fields."""
-    summary = f"Okay, let's confirm the details I have:\n"
-    summary += f"- Title: {data.get('title', 'Not specified')}\n"
-    summary += f"- Department: {data.get('department', 'Not specified')}\n"
-    summary += f"- Description: {data.get('description', 'Not specified')}\n"
-    summary += f"- Location: {data.get('address', 'Not specified')}\n"
-    if data.get('timing'): summary += f"- Timing: {data.get('timing')}\n"
-    if data.get('specific_details'): summary += f"- Specific Details: {data.get('specific_details')}\n"
-    summary += "\nIs this information correct and complete?"
-    return summary
-
-async def generate_ai_reply(session_id: str, history: List[Dict[str, str]], current_query: str, next_action_hint: str, data: Dict[str, Any], suggested_question: str) -> str:
-    if not gemini_model:
-        logger.error(f"Session {session_id}: Gemini model not available for reply generation.")
-        return "I am currently unable to process requests fully. Please try again later."
-
-    formatted_history = "\n".join([f"{entry['role'].capitalize()}: {entry['text']}" for entry in history])
-    data_str = json.dumps(data, indent=2)
-
-    if next_action_hint == "ask_next_question":
-        task_description = f"Your primary goal is to ask the user the following question: '{suggested_question}'. Be polite and conversational. Acknowledge their last message briefly if appropriate."
-    elif next_action_hint == "ask_confirmation":
-        task_description = "All core details seem gathered. Briefly acknowledge the user's last message and ask them to confirm if the details are correct, or if they want to add/change anything. Do NOT include the summary details yourself; just ask for confirmation."
-    elif next_action_hint == "clarify_confirmation":
-        task_description = "The user provided an ambiguous confirmation response. Ask them to clearly confirm (e.g., 'Yes, submit') or deny/request changes (e.g., 'No, change details')."
-    elif next_action_hint == "ask_change_details":
-         task_description = "The user wants to change details (they said 'no' to confirmation). Ask them specifically what they would like to change or add."
-    else:
-        task_description = "Respond helpfully and conversationally to the user's latest message, keeping the context of the grievance report in mind. Keep the response concise."
-
-    prompt = f"""You are a helpful and concise municipal grievance chatbot.
-
-Current Complaint Data:
-{data_str}
-
-Conversation History:
-{formatted_history}
-User: {current_query}
-
-Your Task: {task_description}
-
-Response:"""
-
-    try:
-        logger.info(f"Session {session_id}: Sending generation prompt to Gemini (Hint: {next_action_hint}).")
-        response = await asyncio.to_thread(
-            gemini_model.generate_content,
-            prompt,
-            generation_config={"temperature": 0.7, "max_output_tokens": 150},
-            safety_settings={
-                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                 HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-                 HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-            }
-        )
-        if response.parts:
-            reply_text = response.text.strip()
-            logger.info(f"Session {session_id}: Gemini generated reply: {reply_text}")
-            if next_action_hint == "ask_confirmation":
-                summary = await generate_confirmation_summary(data)
-                reply_text = f"{reply_text}\n\n{summary}"
-            return reply_text
-        elif response.prompt_feedback.block_reason:
-            logger.warning(f"Session {session_id}: Gemini generation prompt blocked: {response.prompt_feedback.block_reason}")
-            return "My response was blocked due to safety settings. Could you please rephrase?"
-        else:
-            logger.error(f"Session {session_id}: Gemini generation returned no parts.")
-            return "Sorry, I couldn't generate a response. Could you try again?"
-
-    except Exception as e:
-        logger.error(f"Session {session_id}: Error during Gemini generation: {e}", exc_info=True)
-        return "Sorry, an error occurred while generating my response."
-
-async def handle_conversation(session_id: str, user_text: str, user_language: str = 'en') -> BotResponse:
-    """Manages the conversation flow using Gemini for core logic."""
-    session = get_session(session_id)
-    history = session.get("conversation_history", [])
-    current_data = session.get("data", {})
-    if "specific_details" not in current_data: current_data["specific_details"] = ""
-    if "title" not in current_data: current_data["title"] = None
-    last_bot_action = session.get("last_bot_action", "gather_info")
-
-    corrected_text = correct_spelling(user_text)
-    detected_intent = recognize_intent(corrected_text)
-    add_history(session_id, "user", user_text)
-
-    if detected_intent == "restart":
-        session = reset_session(session_id)
-        initial_message = session["conversation_history"][0]["text"]
-        return BotResponse(reply=initial_message, action="reset", suggested_actions=["Register Complaint", "Check Status"])
-    if detected_intent == "cancel":
-        reset_session(session_id)
-        return BotResponse(reply="Okay, I've cancelled this complaint registration. Let me know if you need help with anything else.", action="reset")
-    if detected_intent == "help":
-        help_reply = "I can help you register a municipal complaint. Please describe the issue, location, and timing. Key details needed are the department, a description of the problem, and the address/location."
-        add_history(session_id, "bot", help_reply)
-        update_session(session_id, {"last_bot_action": "gather_info"})
-        return BotResponse(reply=help_reply, action="gather_info")
-
-    reply = "Processing..."
-    action = "gather_info"
-    suggestions = []
-    complaint_data_for_frontend = None
-    complaint_ready = False
-    next_action_hint = "gather_info"
-    suggested_question = ""
-
-    logger.info(f"Session {session_id}: Current data before AI: {current_data}")
-    analysis = await extract_and_assess_details(session_id, history, corrected_text, current_data)
-
-    updated_data = analysis["updated_data"]
-    missing_core_fields = analysis["missing"]
-    suggested_question = analysis["next_question"]
-    logger.info(f"Session {session_id}: Updated data after AI: {updated_data}")
-    logger.info(f"Session {session_id}: Missing core fields: {missing_core_fields}")
-    logger.info(f"Session {session_id}: AI assessment: {analysis['assessment']}")
-    logger.info(f"Session {session_id}: AI suggested next question: {suggested_question}")
-
-    update_session(session_id, {"data": updated_data})
-
-    # Check for special skip action
-    if "confirm all details now" in corrected_text.lower() or "skip" in corrected_text.lower():
-        logger.info(f"Session {session_id}: User wants to skip and confirm details. Forcing confirmation.")
-        complaint_data_for_frontend = {
-            "title": updated_data.get("title") or f"Complaint: {updated_data.get('department', 'General Issue')}"[:100],
-            "department": updated_data.get("department") or "Other",
-            "description": updated_data.get("description") or "Issue reported via chatbot",
-            "additionalDetails": {
-                "location_details": updated_data.get("address") or "Location not specified",
-                "issue_timing": updated_data.get("timing"),
-                "specific_details": updated_data.get("specific_details"),
-            }
-        }
-        # Clean up empty values
-        complaint_data_for_frontend["additionalDetails"] = {k: v for k, v in complaint_data_for_frontend["additionalDetails"].items() if v}
-        if not complaint_data_for_frontend["additionalDetails"]:
-             del complaint_data_for_frontend["additionalDetails"]
-
-        reply = "I'll submit your complaint with the information provided. Proceeding with registration..."
-        action = "trigger_registration"
-        complaint_ready = True
-        session["complaint_data_prepared"] = complaint_data_for_frontend
-        next_action_hint = "trigger_registration"
-        
-    elif last_bot_action == "confirm_info":
-        if detected_intent == "confirmation_yes":
-            logger.info(f"Session {session_id}: Confirmation received (Yes). Preparing data.")
-            complaint_data_for_frontend = {
-                "title": updated_data.get("title", f"Complaint: {updated_data.get('department', 'Issue')}")[:100],
-                "department": updated_data.get("department"),
-                "description": updated_data.get("description"),
-                "additionalDetails": {
-                    "location_details": updated_data.get("address"),
-                    "issue_timing": updated_data.get("timing"),
-                    "specific_details": updated_data.get("specific_details"),
-                }
-            }
-            complaint_data_for_frontend["additionalDetails"] = {k: v for k, v in complaint_data_for_frontend["additionalDetails"].items() if v}
-            if not complaint_data_for_frontend["additionalDetails"]:
-                 del complaint_data_for_frontend["additionalDetails"]
-            complaint_data_for_frontend = {k: v for k, v in complaint_data_for_frontend.items() if v}
-
-            reply = "Okay, proceeding with registration..."
-            action = "trigger_registration"
-            complaint_ready = True
-            session["complaint_data_prepared"] = complaint_data_for_frontend
-            next_action_hint = "trigger_registration"
-
-        elif detected_intent == "confirmation_no":
-            logger.info(f"Session {session_id}: Confirmation received (No). Asking what to change.")
-            next_action_hint = "ask_change_details"
-            action = "gather_info"
-            suggestions = []  # Remove confusing change options
-            reply = await generate_ai_reply(session_id, history, corrected_text, next_action_hint, updated_data, suggested_question)
-
-        else:
-            logger.info(f"Session {session_id}: Ambiguous confirmation. Asking for clarification.")
-            next_action_hint = "clarify_confirmation"
-            action = "confirm_info"
-            suggestions = ["Yes, submit", "No, change details"]
-            reply = await generate_ai_reply(session_id, history, corrected_text, next_action_hint, updated_data, suggested_question)
-
-    elif missing_core_fields:
-        logger.info(f"Session {session_id}: Core fields missing: {missing_core_fields}. Asking next question.")
-        next_action_hint = "ask_next_question"
-        action = "gather_info"
-        if "department" in missing_core_fields and ("department" in suggested_question.lower() or "which department" in suggested_question.lower()):
-            suggestions = list(department_keywords.keys())
-        else:
-            suggestions = []
-        reply = await generate_ai_reply(session_id, history, corrected_text, next_action_hint, updated_data, suggested_question)
-
-    else:
-        is_confirm_question = "confirm" in suggested_question.lower()
-
-        if not is_confirm_question:
-            logger.info(f"Session {session_id}: Core complete. Asking specific detail: {suggested_question}")
-            next_action_hint = "ask_next_question"
-            action = "gather_info"
-            suggestions = ["Confirm all details now"]  # Simplified suggestions
-            reply = await generate_ai_reply(session_id, history, corrected_text, next_action_hint, updated_data, suggested_question)
-        else:
-            logger.info(f"Session {session_id}: Core complete. Asking for confirmation.")
-            next_action_hint = "ask_confirmation"
-            action = "confirm_info"
-            suggestions = ["Yes, submit", "No, change details"]
-            reply = await generate_ai_reply(session_id, history, corrected_text, next_action_hint, updated_data, suggested_question)
-
-    update_session(session_id, {"last_bot_action": action})
-    add_history(session_id, "bot", reply)
-
-    response = BotResponse(
-        reply=reply,
-        suggested_actions=suggestions if suggestions else None,
-        detected_intent=detected_intent,
-        corrected_text=corrected_text if corrected_text != user_text else None,
-        department=updated_data.get("department"),
-        action=action,
-        complaint_data=complaint_data_for_frontend,
-        complaint_ready=complaint_ready
+def _gemini_api_key() -> Optional[str]:
+    return (
+        os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or os.getenv("GOOGLE_GEMINI_API_KEY")
     )
 
-    return response
+
+def _load_api_key_from_env_files() -> None:
+    if _gemini_api_key():
+        return
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, ".env"),
+        os.path.join(base_dir, "..", "backend", ".env"),
+    ]
+
+    for env_file in candidates:
+        if not os.path.exists(env_file):
+            continue
+        try:
+            with open(env_file, "r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip().strip("'\"")
+                    if key in {"GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GEMINI_API_KEY"} and value:
+                        os.environ[key] = value
+                        logger.info("Loaded Gemini API key from %s", env_file)
+                        return
+        except Exception:
+            logger.exception("Failed reading env file: %s", env_file)
+
+
+def get_gemini_model():
+    global _gemini_model, _gemini_error
+
+    if _gemini_model is not None:
+        return _gemini_model
+
+    if genai is None:
+        _gemini_error = "google-generativeai package is not installed"
+        return None
+
+    _load_api_key_from_env_files()
+    api_key = _gemini_api_key()
+    if not api_key:
+        _gemini_error = "GEMINI_API_KEY is missing"
+        return None
+
+    model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    try:
+        genai.configure(api_key=api_key)
+        _gemini_model = genai.GenerativeModel(model_name)
+        logger.info("Gemini model initialized: %s", model_name)
+        return _gemini_model
+    except Exception as exc:
+        _gemini_error = str(exc)
+        logger.exception("Failed to initialize Gemini model")
+        return None
+
+
+async def _generate_gemini_json(prompt: str) -> Optional[Dict[str, Any]]:
+    model = get_gemini_model()
+    if not model:
+        return None
+
+    safety_settings = None
+    if HarmCategory and HarmBlockThreshold:
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        }
+
+    for attempt in range(1, 4):
+        try:
+            response = await asyncio.to_thread(
+                model.generate_content,
+                prompt,
+                generation_config={
+                    "temperature": 0.15,
+                    "response_mime_type": "application/json",
+                    "max_output_tokens": 600,
+                },
+                safety_settings=safety_settings,
+            )
+            text = getattr(response, "text", "")
+            parsed = _extract_json_object(text)
+            if parsed:
+                return parsed
+            logger.warning("Gemini JSON parse failed (attempt %s)", attempt)
+        except Exception:
+            logger.exception("Gemini request failed (attempt %s)", attempt)
+
+    return None
+
+
+def _fallback_extract(data: Dict[str, Any], user_text: str) -> Dict[str, Any]:
+    updated = dict(data)
+    text = _clean_text(user_text)
+    lowered = _safe_lower(user_text)
+
+    if not _meaningful(updated.get("description")) and _meaningful(text):
+        updated["description"] = text
+
+    if not _meaningful(updated.get("department")):
+        fallback_keywords = {
+            "Electricity": ["electric", "power", "street light", "outage"],
+            "Water": ["water", "leak", "sewage", "drain"],
+            "Roads": ["pothole", "road", "street", "traffic signal"],
+            "Sanitation": ["garbage", "waste", "trash", "cleaning"],
+            "Parks": ["park", "playground", "tree", "garden"],
+        }
+        for dep, keys in fallback_keywords.items():
+            if any(k in lowered for k in keys):
+                updated["department"] = dep
+                break
+
+    if not _meaningful(updated.get("address")):
+        address_match = re.search(
+            r"\b(?:at|in|near|on|around|beside|behind|opposite)\s+([a-z0-9][a-z0-9 ,/#\-.]{5,})",
+            lowered,
+            flags=re.IGNORECASE,
+        )
+        if address_match:
+            updated["address"] = _clean_text(address_match.group(1))
+
+    if not _meaningful(updated.get("timing")):
+        timing_match = re.search(
+            r"\b(for\s+\d+\s+(?:hour|hours|day|days|week|weeks|month|months)|since\s+[a-z0-9 ,:-]+|today|yesterday|last\s+week)\b",
+            lowered,
+            flags=re.IGNORECASE,
+        )
+        if timing_match:
+            updated["timing"] = _clean_text(timing_match.group(1))
+
+    if not _meaningful(updated.get("specific_details")) and _meaningful(text) and len(text.split()) >= 5:
+        updated["specific_details"] = text
+
+    updated["department"] = _normalize_department(updated.get("department"))
+    updated["title"] = generate_title(updated)
+
+    missing = missing_fields(updated)
+    next_field = missing[0] if missing else None
+    next_question = FIELD_QUESTIONS.get(next_field) if next_field else "confirmation_ready"
+
+    return {
+        "updated_data": updated,
+        "missing_fields": missing,
+        "next_question": next_question,
+        "assistant_ack": "Got it.",
+    }
+
+
+async def analyze_with_gemini(
+    session: Dict[str, Any], user_text: str, corrected_text: str
+) -> Dict[str, Any]:
+    data = session.get("data", {})
+    history = session.get("conversation_history", [])
+    awaiting_field = session.get("awaiting_field")
+
+    prompt = f"""
+You are an expert municipal complaint intake assistant.
+
+Goal:
+Extract and refine complaint details from the ongoing conversation.
+Ask focused follow-up questions until ALL required fields are collected.
+
+Allowed department values only: {json.dumps(DEPARTMENT_OPTIONS)}
+Required fields (must be non-empty): {json.dumps(REQUIRED_FIELDS)}
+All fields: {json.dumps(DATA_KEYS)}
+
+Current complaint data JSON:
+{json.dumps(data, ensure_ascii=True)}
+
+Conversation history (latest first):
+{_format_history_for_prompt(history)}
+
+Latest user message:
+{corrected_text}
+
+If awaiting_field is set, prioritize filling it first.
+awaiting_field={awaiting_field}
+
+Return ONLY valid JSON with this schema:
+{{
+  "extracted_data": {{
+    "department": "... or null",
+    "description": "... or null",
+    "address": "... or null",
+    "timing": "... or null",
+    "specific_details": "... or null",
+    "title": "... or null"
+  }},
+  "missing_fields": ["department", "description"],
+  "next_question": "single direct question to gather next missing field, or 'confirmation_ready'",
+  "assistant_ack": "one short polite sentence acknowledging user input"
+}}
+
+Rules:
+- Department must be one of allowed values; else set null.
+- If user updates/corrects old information, overwrite with latest info.
+- Keep description concise and factual.
+- next_question must target only one field at a time.
+- If all required fields are present, set next_question to "confirmation_ready".
+- Never include markdown or extra text outside JSON.
+"""
+
+    parsed = await _generate_gemini_json(prompt)
+    if not parsed:
+        return _fallback_extract(data, user_text)
+
+    extracted = parsed.get("extracted_data", {})
+    if not isinstance(extracted, dict):
+        extracted = {}
+
+    updated = dict(data)
+    for key in DATA_KEYS:
+        incoming = _clean_text(extracted.get(key))
+        if not _meaningful(incoming):
+            continue
+        if key == "department":
+            normalized = _normalize_department(incoming)
+            if normalized:
+                updated[key] = normalized
+        else:
+            updated[key] = incoming
+
+    # if field was explicitly requested and user gave content, keep it even when model misses
+    if awaiting_field and not _meaningful(updated.get(awaiting_field)):
+        raw = _clean_text(corrected_text)
+        if _meaningful(raw):
+            if awaiting_field == "department":
+                updated["department"] = _normalize_department(raw)
+            else:
+                updated[awaiting_field] = raw
+
+    updated["department"] = _normalize_department(updated.get("department"))
+    updated["title"] = generate_title(updated)
+
+    computed_missing = missing_fields(updated)
+
+    reported_missing = parsed.get("missing_fields", [])
+    if not isinstance(reported_missing, list):
+        reported_missing = []
+    reported_missing = [f for f in reported_missing if f in REQUIRED_FIELDS]
+
+    final_missing = computed_missing
+    if set(reported_missing) and len(reported_missing) > len(computed_missing):
+        final_missing = sorted(set(computed_missing).union(set(reported_missing)), key=REQUIRED_FIELDS.index)
+
+    next_question = _clean_text(parsed.get("next_question"))
+    if not next_question:
+        field = final_missing[0] if final_missing else None
+        next_question = FIELD_QUESTIONS.get(field, "confirmation_ready")
+
+    ack = _clean_text(parsed.get("assistant_ack")) or "Understood."
+
+    return {
+        "updated_data": updated,
+        "missing_fields": final_missing,
+        "next_question": next_question,
+        "assistant_ack": ack,
+    }
+
+
+def should_fast_track_submission(text: str) -> bool:
+    lowered = _safe_lower(text)
+    return "confirm all details now" in lowered or lowered == "skip"
+
+
+async def handle_conversation(session_id: str, user_text: str, user_language: str = "en") -> BotResponse:
+    del user_language
+
+    session = get_session(session_id)
+    data = session["data"]
+    last_action = session.get("last_bot_action", "gather_info")
+
+    corrected_text = correct_spelling(user_text)
+    intent = recognize_intent(corrected_text)
+    add_history(session_id, "user", user_text)
+
+    if intent == "restart":
+        refreshed = reset_session(session_id)
+        initial_message = refreshed["conversation_history"][0]["text"]
+        add_history(session_id, "bot", initial_message)
+        return BotResponse(
+            reply=initial_message,
+            action="reset",
+            suggested_actions=["Register Complaint", "Check Status"],
+            detected_intent=intent,
+            corrected_text=corrected_text if corrected_text != user_text else None,
+        )
+
+    if intent == "cancel":
+        reset_session(session_id)
+        reply = "Okay, I cancelled this complaint registration. You can start a new one anytime."
+        add_history(session_id, "bot", reply)
+        return BotResponse(
+            reply=reply,
+            action="reset",
+            detected_intent=intent,
+            corrected_text=corrected_text if corrected_text != user_text else None,
+            complaint_ready=False,
+        )
+
+    if intent == "help":
+        reply = (
+            "I will collect full complaint details step by step: department, issue, location, timing, and specific impact. "
+            "Please describe your issue to begin."
+        )
+        session["last_bot_action"] = "gather_info"
+        session["awaiting_field"] = None
+        add_history(session_id, "bot", reply)
+        return BotResponse(
+            reply=reply,
+            action="gather_info",
+            detected_intent=intent,
+            corrected_text=corrected_text if corrected_text != user_text else None,
+            department=data.get("department"),
+            complaint_ready=False,
+        )
+
+    if intent == "status_check":
+        reply = "This chatbot is for new complaint registration. To track status, use your complaint number on the tracking page."
+        add_history(session_id, "bot", reply)
+        return BotResponse(
+            reply=reply,
+            action="gather_info",
+            detected_intent=intent,
+            corrected_text=corrected_text if corrected_text != user_text else None,
+            department=data.get("department"),
+            complaint_ready=False,
+        )
+
+    if intent == "greeting" and not _meaningful(data.get("description")):
+        reply = "Hello. Please describe your issue, location, and when it started."
+        add_history(session_id, "bot", reply)
+        return BotResponse(
+            reply=reply,
+            action="gather_info",
+            detected_intent=intent,
+            corrected_text=corrected_text if corrected_text != user_text else None,
+            department=data.get("department"),
+            complaint_ready=False,
+        )
+
+    if last_action == "confirm_info":
+        if intent == "confirmation_yes":
+            complaint = build_complaint_data(data)
+            session["complaint_data_prepared"] = complaint
+            session["last_bot_action"] = "trigger_registration"
+            session["awaiting_field"] = None
+            reply = "Okay, proceeding with registration."
+            add_history(session_id, "bot", reply)
+            return BotResponse(
+                reply=reply,
+                detected_intent=intent,
+                corrected_text=corrected_text if corrected_text != user_text else None,
+                department=data.get("department"),
+                action="trigger_registration",
+                complaint_data=complaint,
+                complaint_ready=True,
+            )
+
+        if intent == "confirmation_no":
+            session["last_bot_action"] = "gather_info"
+            session["awaiting_field"] = None
+            reply = "Sure, tell me exactly what you want to change."
+            add_history(session_id, "bot", reply)
+            return BotResponse(
+                reply=reply,
+                detected_intent=intent,
+                corrected_text=corrected_text if corrected_text != user_text else None,
+                department=data.get("department"),
+                action="gather_info",
+                complaint_ready=False,
+            )
+
+        session["last_bot_action"] = "gather_info"
+
+    analysis = await analyze_with_gemini(session, user_text, corrected_text)
+    session["data"] = analysis["updated_data"]
+    data = session["data"]
+    missing = analysis["missing_fields"]
+
+    # transparent hint for free-tier configuration if Gemini not active
+    if get_gemini_model() is None and not session.get("warned_missing_key"):
+        session["warned_missing_key"] = True
+        logger.warning("Gemini is not active: %s", _gemini_error)
+
+    if should_fast_track_submission(corrected_text):
+        if missing:
+            field = missing[0]
+            question = FIELD_QUESTIONS.get(field, "Please share the missing detail.")
+            session["awaiting_field"] = field
+            session["last_bot_action"] = "gather_info"
+            reply = f"{analysis['assistant_ack']} {question}".strip()
+            add_history(session_id, "bot", reply)
+            return BotResponse(
+                reply=reply,
+                follow_up_question=question,
+                suggested_actions=DEPARTMENT_OPTIONS if field == "department" else None,
+                detected_intent=intent,
+                corrected_text=corrected_text if corrected_text != user_text else None,
+                department=data.get("department"),
+                action="gather_info",
+                complaint_ready=False,
+            )
+
+        complaint = build_complaint_data(data)
+        session["complaint_data_prepared"] = complaint
+        session["last_bot_action"] = "trigger_registration"
+        session["awaiting_field"] = None
+        reply = "I will submit your complaint with the provided details. Proceeding with registration."
+        add_history(session_id, "bot", reply)
+        return BotResponse(
+            reply=reply,
+            detected_intent=intent,
+            corrected_text=corrected_text if corrected_text != user_text else None,
+            department=data.get("department"),
+            action="trigger_registration",
+            complaint_data=complaint,
+            complaint_ready=True,
+        )
+
+    if missing:
+        field = missing[0]
+        next_question = analysis.get("next_question")
+        if not _meaningful(next_question) or next_question == "confirmation_ready":
+            next_question = FIELD_QUESTIONS.get(field, "Please share the missing detail.")
+
+        session["awaiting_field"] = field
+        session["last_bot_action"] = "gather_info"
+        suggestions = None
+        if field == "department":
+            suggestions = DEPARTMENT_OPTIONS
+        elif field == "timing":
+            suggestions = ["Today", "Yesterday", "Since last week", "Not sure"]
+
+        reply = f"{analysis['assistant_ack']} {next_question}".strip()
+        add_history(session_id, "bot", reply)
+        return BotResponse(
+            reply=reply,
+            follow_up_question=next_question,
+            suggested_actions=suggestions,
+            detected_intent=intent,
+            corrected_text=corrected_text if corrected_text != user_text else None,
+            department=data.get("department"),
+            action="gather_info",
+            complaint_ready=False,
+        )
+
+    summary = confirmation_summary(data)
+    session["awaiting_field"] = None
+    session["last_bot_action"] = "confirm_info"
+    reply = f"{analysis['assistant_ack']}\n\n{summary}".strip()
+    add_history(session_id, "bot", reply)
+    return BotResponse(
+        reply=reply,
+        follow_up_question="Is this information correct and complete?",
+        suggested_actions=["Yes, submit", "No, change details"],
+        detected_intent=intent,
+        corrected_text=corrected_text if corrected_text != user_text else None,
+        department=data.get("department"),
+        action="confirm_info",
+        complaint_ready=False,
+    )
+
 
 @app.get("/")
-async def root():
-    return {"message": "Grievance Chatbot API is running"}
+async def root() -> Dict[str, str]:
+    if get_gemini_model() is None:
+        message = "Grievance Chatbot API is running (Gemini inactive: set GEMINI_API_KEY)"
+    else:
+        message = "Grievance Chatbot API is running"
+    return {"message": message}
+
 
 @app.post("/chat", response_model=BotResponse)
-async def chat_endpoint_main(message: UserMessage):
+async def chat_endpoint_main(message: UserMessage) -> BotResponse:
     try:
-        logger.info(f"Received chat message for session {message.session_id}: {message.text}")
+        logger.info("Received chat message for session %s", message.session_id)
         response = await handle_conversation(message.session_id, message.text, message.language)
-        logger.info(f"Sending response for session {message.session_id}: Action={response.action}, Ready={response.complaint_ready}")
+        logger.info(
+            "Sending response for session %s: action=%s ready=%s",
+            message.session_id,
+            response.action,
+            response.complaint_ready,
+        )
         return response
-    except Exception as e:
-        logger.error(f"Error during chat handling for session {message.session_id}: {e}", exc_info=True)
+    except Exception:
+        logger.exception("Error during chat handling for session %s", message.session_id)
         try:
             reset_session(message.session_id)
-        except Exception as reset_e:
-             logger.error(f"Failed to reset session {message.session_id} after error: {reset_e}")
+        except Exception:
+            logger.exception("Failed to reset session %s after error", message.session_id)
         return BotResponse(
-            reply="I encountered an unexpected issue and had to reset our conversation. Please start again.",
-            action="reset"
+            reply="I encountered an unexpected issue and reset the conversation. Please start again.",
+            action="reset",
+            complaint_ready=False,
         )
+
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info("Starting FastAPI server with Uvicorn...")
+
+    logger.info("Starting FastAPI server with Uvicorn")
     uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

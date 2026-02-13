@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useForm } from 'react-hook-form';
-import { Loader2 } from 'lucide-react';
+import { Loader2, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -130,40 +130,44 @@ export default function RegisterComplaintPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[70vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-800"></div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto bg-[#f7f9fc]">
+    <div className="bg-gray-50 min-h-[calc(100vh-200px)]">
       {/* Breadcrumb */}
-      <div className="bg-gray-100 py-2 border-b border-gray-200 font-sans">
+      <div className="bg-white py-2.5 border-b border-gray-200 shadow-sm">
         <div className="container mx-auto px-4">
-          <div className="text-sm text-gray-600">
-            <Link href="/" className="text-blue-700 hover:underline">{t('nav.home')}</Link> &gt;
-            <span className="font-medium text-gray-800"> {t('complaint.register')}</span>
+          <div className="text-sm text-gray-500">
+            <Link href="/" className="text-blue-700 hover:underline">{t('nav.home')}</Link>
+            <span className="mx-1.5 text-gray-300">/</span>
+            <span className="font-medium text-gray-800">{t('complaint.register')}</span>
           </div>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-12">
+      <div className="max-w-3xl mx-auto px-4 py-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          <Card className="shadow-lg border border-gray-300 rounded-xl bg-white">
-            <CardHeader className="bg-[#e8edf5] rounded-t-xl border-b border-gray-300 p-6">
-              <CardTitle className="text-2xl font-semibold text-[#1a237e]">{t('complaint.register')}</CardTitle>
-              <CardDescription className="text-sm text-[#3c3f4a]">
+          <Card className="shadow-xl border-0 rounded-xl bg-white overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-blue-900 to-blue-800 p-6">
+              <CardTitle className="text-2xl font-bold text-white flex items-center gap-2">
+                <FileText className="h-6 w-6 text-yellow-400" />
+                {t('complaint.register')}
+              </CardTitle>
+              <CardDescription className="text-sm text-blue-200">
                 {t('complaint.descriptionPlaceholder')}
               </CardDescription>
             </CardHeader>
 
             <Tabs defaultValue="form" value={activeTab} onValueChange={setActiveTab}>
               <div className="px-6 pt-4">
-                <TabsList className="grid w-full grid-cols-2 bg-[#d9e1f2] text-[#1a237e]">
+                <TabsList className="grid w-full grid-cols-2 bg-gray-100 rounded-lg p-1">
                   <TabsTrigger value="form">{t('complaint.formFill')}</TabsTrigger>
                   <TabsTrigger value="chatbot">{t('complaint.chatAssistant')}</TabsTrigger>
                 </TabsList>
@@ -327,7 +331,7 @@ export default function RegisterComplaintPage() {
                   <CardFooter className="p-6">
                     <Button
                       type="submit"
-                      className="w-full bg-[#1a237e] hover:bg-[#0d1545] text-white"
+                      className="w-full h-12 bg-blue-800 hover:bg-blue-900 text-white font-semibold text-base"
                       disabled={isLoading}
                     >
                       {isLoading ? (

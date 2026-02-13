@@ -15,7 +15,11 @@ import {
   requestCloseComplaint,
   handleCloseResponse,
   getChatMessages,
-  saveChatMessage
+  saveChatMessage,
+  transferComplaint,
+  acceptTransfer,
+  rejectTransfer,
+  getIncomingTransfers
 } from '../controllers/departmentController.js';
 import { departmentAuth } from '../middlewares/authMiddleware.js';
 
@@ -40,6 +44,10 @@ router.get("/complaints/:complaintNumber/chat", departmentAuth, getChatMessages)
 router.post("/complaints/:complaintNumber/chat", departmentAuth, saveChatMessage);
 router.post("/complaints/:complaintNumber/request-close", departmentAuth, requestCloseComplaint);
 router.post("/complaints/:complaintNumber/close-response", departmentAuth, handleCloseResponse);
+router.post("/complaints/:complaintNumber/transfer", departmentAuth, transferComplaint);
+router.post("/complaints/:complaintNumber/accept-transfer", departmentAuth, acceptTransfer);
+router.post("/complaints/:complaintNumber/reject-transfer", departmentAuth, rejectTransfer);
+router.get("/transfers/incoming", departmentAuth, getIncomingTransfers);
 
 // Dashboard and statistics
 router.get("/dashboard/stats", departmentAuth, getDepartmentStats);

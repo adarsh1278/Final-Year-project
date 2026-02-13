@@ -43,7 +43,7 @@ const ChatMessage = ({ message, isBot }) => {
                 <button
                   key={index}
                   onClick={() => option.onClick && option.onClick()}
-                  className="bg-background text-foreground text-xs px-2 py-1 rounded-full hover:bg-muted transition-colors"
+                  className="bg-white text-gray-900 text-xs px-2 py-1 rounded-full hover:bg-gray-100 transition-colors"
                 >
                   {option.label}
                 </button>

@@ -3,136 +3,40 @@
 import Complaint from '../models/Complaint.js';
 import crypto from 'crypto';
 import User from '../models/User.js';
-3
 
-import nodemailer from 'nodemailer';
+// import nodemailer from 'nodemailer';
 
 export const registerComplaint = async (req, res) => {
-  const { department, title, description, additionalDetails } = req.body;
-  const complaintNumber = `${department.slice(0,3).toUpperCase()}-${Date.now()}-${crypto.randomInt(1000,9999)}`;
-  const user = await User.findById(req.user.id);
-  
-  const complaint = await Complaint.create({
-    userId: req.user.id,
-    complaintNumber,
-    department,
-    title,
-    description,
-    additionalDetails
-  });
-  
-  // Setup nodemailer transporter
-  const transporter = nodemailer.createTransport({
-    service: 'gmail', // or any other email service
-    auth: {
-      user: process.env.EMAIL_USER, // replace with your email
-      pass: process.env.EMAIL_PASS, // replace with your email password or app password
-    },
-  });
-
-  // Format additional details as key-value pairs
-  const additionalDetailsHTML = Object.entries(additionalDetails || {}).map(([key, value]) => {
-    return `<p><span class="key">${key}:</span> <span class="value">${value}</span></p>`;
-  }).join('');
-
-  // Email HTML Template with CSS
-  const emailHTML = `
-    <html>
-      <head>
-        <style>
-          body {
-            font-family: 'Arial', sans-serif;
-            background-color: #f8f9fa;
-            margin: 0;
-            padding: 0;
-          }
-          .container {
-            width: 600px;
-            margin: 50px auto;
-            padding: 30px;
-            background-color: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-          }
-          h1 {
-            font-size: 24px;
-            color: #333;
-            text-align: center;
-            margin-bottom: 20px;
-          }
-          p {
-            font-size: 16px;
-            line-height: 1.6;
-            color: #555;
-          }
-          .complaint-detail {
-            margin-top: 20px;
-            background-color: #f4f4f9;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
-          }
-          .complaint-detail p {
-            margin: 8px 0;
-          }
-          .complaint-detail .title {
-            font-weight: bold;
-            color: #2e6da4;
-          }
-          .complaint-detail .key {
-            font-weight: bold;
-            color: #5a5a5a;
-          }
-          .complaint-detail .value {
-            color: #007bff;
-          }
-          .footer {
-            margin-top: 30px;
-            text-align: center;
-            font-size: 14px;
-            color: #888;
-          }
-          .footer p {
-            margin: 5px 0;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>Complaint Registered Successfully</h1>
-          <p>Dear ${user.name},</p>
-          <p>Thank you for registering your complaint with us. Below are the details of your complaint:</p>
-          <div class="complaint-detail">
-            <p><span class="title">Complaint Number:</span> ${complaintNumber}</p>
-            <p><span class="title">Department:</span> ${department}</p>
-            <p><span class="title">Title:</span> ${title}</p>
-            <p><span class="title">Description:</span> ${description}</p>
-            ${additionalDetailsHTML}
-          </div>
-          <div class="footer">
-            <p>If you have any further questions, feel free to contact us.</p>
-            <p>Thank you for your patience!</p>
-          </div>
-        </div>
-      </body>
-    </html>
-  `;
-
-  // Sending email
-  const mailOptions = {
-    from: process.env.EMAIL_USER, // sender address
-    to: user.email, // recipient address
-    subject: 'Complaint Registered - ' + complaintNumber,
-    html: emailHTML,
-  };
-
   try {
-     transporter.sendMail(mailOptions);
-    console.log('Email sent successfully!');
+    const { department, title, description, additionalDetails } = req.body;
+    const complaintNumber = `${department.slice(0,3).toUpperCase()}-${Date.now()}-${crypto.randomInt(1000,9999)}`;
+    
+    const complaint = await Complaint.create({
+      userId: req.user.id,
+      complaintNumber,
+      department,
+      title,
+      description,
+      additionalDetails,
+      trackingHistory: [{
+        status: 'open',
+        message: 'Complaint registered successfully',
+        updatedBy: 'system',
+        updatedByType: 'system',
+        department: department,
+        timestamp: new Date()
+      }]
+    });
+
+    // Email sending commented out - not needed for now
+    // const user = await User.findById(req.user.id);
+    // const transporter = nodemailer.createTransport({ ... });
+    // transporter.sendMail(mailOptions);
+
     res.status(201).json({ message: "Complaint registered", complaintNumber });
   } catch (error) {
-    console.error('Error sending email:', error);
-    res.status(500).json({ message: "Error registering complaint and sending email" });
+    console.error('Error registering complaint:', error);
+    res.status(500).json({ message: "Error registering complaint" });
   }
 };
 
@@ -304,6 +208,89 @@ export const respondToCloseRequest = async (req, res) => {
     });
   } catch (error) {
     console.error("Error responding to close request:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Submit user feedback after complaint is resolved/closed
+export const submitUserFeedback = async (req, res) => {
+  try {
+    const { complaintNumber } = req.params;
+    const { rating, comment } = req.body;
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ message: "Rating must be between 1 and 5" });
+    }
+
+    const complaint = await Complaint.findOne({
+      complaintNumber,
+      userId: req.user.id
+    });
+
+    if (!complaint) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    if (!['resolved', 'closed'].includes(complaint.status)) {
+      return res.status(400).json({ message: "Feedback can only be submitted for resolved or closed complaints" });
+    }
+
+    if (complaint.userFeedback && complaint.userFeedback.rating) {
+      return res.status(400).json({ message: "Feedback already submitted for this complaint" });
+    }
+
+    complaint.userFeedback = {
+      rating,
+      comment: comment || '',
+      submittedAt: new Date()
+    };
+
+    // Add to tracking history
+    if (!complaint.trackingHistory) complaint.trackingHistory = [];
+    complaint.trackingHistory.push({
+      status: complaint.status,
+      message: `User submitted feedback with rating ${rating}/5`,
+      updatedBy: 'user',
+      updatedByType: 'user',
+      department: complaint.department,
+      timestamp: new Date()
+    });
+
+    await complaint.save();
+
+    res.status(200).json({
+      message: "Feedback submitted successfully",
+      userFeedback: complaint.userFeedback
+    });
+  } catch (error) {
+    console.error("Error submitting feedback:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Get user complaint statistics
+export const getUserComplaintStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const total = await Complaint.countDocuments({ userId });
+    const resolved = await Complaint.countDocuments({ userId, status: { $in: ['resolved', 'closed'] } });
+    const inProgress = await Complaint.countDocuments({ userId, status: 'in_progress' });
+    const pending = await Complaint.countDocuments({ userId, status: 'open' });
+    const rejected = await Complaint.countDocuments({ userId, status: 'rejected' });
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        total,
+        resolved,
+        inProgress,
+        pending,
+        rejected
+      }
+    });
+  } catch (error) {
+    console.error("Error fetching user complaint stats:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

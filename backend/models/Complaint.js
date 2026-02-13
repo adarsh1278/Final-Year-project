@@ -41,6 +41,26 @@ const complaintSchema = new mongoose.Schema({
     type: { type: String, enum: ["department", "user"], default: "department" }
   }],
 
+  // Tracking history - every status change and action
+  trackingHistory: {
+    type: [{
+      status: String,
+      message: String,
+      updatedBy: String, // 'system', department name, or 'user'
+      updatedByType: { type: String, enum: ['system', 'department', 'user'], default: 'system' },
+      department: String, // which department made the update
+      timestamp: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+
+  // User feedback/rating after complaint resolution
+  userFeedback: {
+    rating: { type: Number, min: 1, max: 5 },
+    comment: String,
+    submittedAt: Date
+  },
+
   // Chat messages for real-time communication
   chatMessages: {
     type: [{
@@ -64,6 +84,32 @@ const complaintSchema = new mongoose.Schema({
     userResponseAt: Date,
     userResponseMessage: String
   },
+
+  // Transfer / reassign history
+  transferHistory: {
+    type: [{
+      fromDepartment: String,
+      toDepartment: String,
+      reason: String,
+      transferredBy: String,
+      status: { type: String, enum: ['pending', 'accepted', 'rejected'], default: 'accepted' },
+      respondedAt: Date,
+      rejectionReason: String,
+      timestamp: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+
+  // Pending transfer request
+  pendingTransfer: {
+    isPending: { type: Boolean, default: false },
+    fromDepartment: String,
+    toDepartment: String,
+    reason: String,
+    requestedBy: String,
+    requestedAt: Date
+  },
+
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "Department" },
   expectedResolutionDate: Date,
   actualResolutionDate: Date,
