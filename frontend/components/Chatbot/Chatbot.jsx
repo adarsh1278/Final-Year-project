@@ -172,8 +172,9 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
           }]);
           setSuggestionActions(['Go to Login']);
         } else {
-          // Show confirmation dialog
-          setIsDialogOpen(true);
+          // Submit immediately after final confirmation so the flow does not get stuck
+          // behind a modal that may not render visibly in every layout state.
+          await submitComplaint(data.complaint_data || complaintData);
         }
       }
 
@@ -225,7 +226,7 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
     }
   };
 
-  const submitComplaint = async () => {
+  const submitComplaint = async (complaintPayload = complaintData) => {
     if (!isAuthenticated || !isUser) {
       toast({
         title: "Login Required",
@@ -239,7 +240,11 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
     setIsSubmittingComplaint(true);
 
     try {
-      const result = await registerComplaint(complaintData);
+      if (!complaintPayload) {
+        throw new Error('Complaint data is missing');
+      }
+
+      const result = await registerComplaint(complaintPayload);
 
       // Add success message to chat
       setMessages(prev => [...prev, {
@@ -256,7 +261,7 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
 
       // Pass data to parent component if callback exists
       if (onComplaintDataChange) {
-        onComplaintDataChange(complaintData, true);
+        onComplaintDataChange(complaintPayload, true);
       }
 
       // Navigate to history page after short delay
@@ -266,16 +271,17 @@ export default function GrievanceChatbot({ onComplaintDataChange }) {
 
     } catch (error) {
       console.error("Error submitting complaint:", error);
+      const errorMessage = error.response?.data?.message || error.message || "There was an error submitting your complaint.";
 
       // Add failure message to chat
       setMessages(prev => [...prev, {
         sender: 'bot',
-        text: "Sorry, there was an error submitting your complaint. Please try again later."
+        text: `Sorry, there was an error submitting your complaint. ${errorMessage}`
       }]);
 
       toast({
         title: "Submission Failed",
-        description: "There was an error submitting your complaint. Please try again later.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

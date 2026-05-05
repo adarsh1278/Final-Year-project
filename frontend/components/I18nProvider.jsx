@@ -10,8 +10,11 @@ export default function I18nProvider({ children }) {
     const pathname = usePathname();
     const { i18n } = useTranslation();
 
+    // Extract base language code (e.g. 'en-US' -> 'en')
+    const langBase = (i18n.language || 'en').split('-')[0];
+
     const applyTranslation = useCallback(async () => {
-        const lang = i18n.language || localStorage.getItem('selectedLanguage') || 'en';
+        const lang = langBase || localStorage.getItem('selectedLanguage') || 'en';
         if (lang && lang !== 'en') {
             // Wait for DOM to settle after navigation
             await new Promise(r => setTimeout(r, 500));
@@ -21,7 +24,7 @@ export default function I18nProvider({ children }) {
                 console.error('Auto-translation failed:', err);
             }
         }
-    }, [i18n.language]);
+    }, [langBase]);
 
     // Re-translate when route changes
     useEffect(() => {
@@ -30,8 +33,7 @@ export default function I18nProvider({ children }) {
 
     // Also observe DOM mutations to translate dynamically added content
     useEffect(() => {
-        const lang = i18n.language;
-        if (!lang || lang === 'en') return;
+        if (!langBase || langBase === 'en') return;
 
         let debounceTimer;
         let isTranslating = false;
@@ -41,7 +43,7 @@ export default function I18nProvider({ children }) {
             debounceTimer = setTimeout(async () => {
                 isTranslating = true;
                 try {
-                    await translatePage(lang);
+                    await translatePage(langBase);
                 } catch (e) {}
                 // Allow future mutations after a cooldown
                 setTimeout(() => { isTranslating = false; }, 2000);
@@ -57,7 +59,7 @@ export default function I18nProvider({ children }) {
             observer.disconnect();
             clearTimeout(debounceTimer);
         };
-    }, [i18n.language]);
+    }, [langBase]);
 
     return <>{children}</>;
 }

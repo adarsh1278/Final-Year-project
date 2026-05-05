@@ -20,12 +20,13 @@ export const AuthProvider = ({ children }) => {
     const initAuth = async () => {
       try {
         const response = await axiosInstance.get('/api/auth/profile');
-        setUser(response.data);
+        // Backend returns { status, data: user } — extract the user object
+        setUser(response.data?.data || response.data);
       } catch (error) {
         // Not logged in as user, try department
         try {
           const deptResponse = await axiosInstance.get('/api/departments/profile');
-          setDepartment(deptResponse.data);
+          setDepartment(deptResponse.data?.data || deptResponse.data);
         } catch (deptError) {
           // Neither user nor department is logged in
           console.log('Not authenticated');
@@ -57,7 +58,7 @@ export const AuthProvider = ({ children }) => {
       });
       
       const userData = await axiosInstance.get('/api/auth/profile');
-      setUser(userData.data);
+      setUser(userData.data?.data || userData.data);
       
       toast({
         title: "Login successful",
@@ -115,7 +116,7 @@ export const AuthProvider = ({ children }) => {
       });
       
       const deptData = await axiosInstance.get('/api/departments/profile');
-      setDepartment(deptData.data);
+      setDepartment(deptData.data?.data || deptData.data);
       
       toast({
         title: "Department login successful",
@@ -167,6 +168,16 @@ export const AuthProvider = ({ children }) => {
     setLanguage(lang);
   };
 
+  // Refresh user data from server
+  const refreshUser = async () => {
+    try {
+      const response = await axiosInstance.get('/api/auth/profile');
+      setUser(response.data?.data || response.data);
+    } catch (error) {
+      console.error('Failed to refresh user:', error);
+    }
+  };
+
   const value = {
     user,
     department,
@@ -177,6 +188,7 @@ export const AuthProvider = ({ children }) => {
     departmentLogin,
     logout,
     changeLanguage,
+    refreshUser,
     isAuthenticated: !!user || !!department,
     isDepartment: !!department,
     isUser: !!user

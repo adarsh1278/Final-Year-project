@@ -626,9 +626,12 @@ i18n
     resources,
     fallbackLng: 'en',
     debug: false,
+    // Only use the base language code (e.g. 'en' not 'en-US')
+    load: 'languageOnly',
     detection: {
       order: ['localStorage', 'navigator', 'htmlTag'],
-      caches: ['localStorage']
+      caches: ['localStorage'],
+      lookupLocalStorage: 'i18nextLng',
     },
     interpolation: {
       escapeValue: false,

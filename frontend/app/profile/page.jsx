@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Phone, Mail, Calendar, Globe } from 'lucide-react';
+import { User, Phone, Mail, Calendar, Globe, MapPin, CreditCard, Briefcase, Users } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -16,29 +16,6 @@ export default function ProfilePage() {
   const { user, loading, isAuthenticated } = useAuth();
   const router = useRouter();
 
-
-  const fetchComplaintStatistics = async () => {
-    try {
-      setIsLoadingComplaints(true);
-      const data = await getUserComplaintStats();
-      if (data && data.stats) {
-        setComplaintsData(data.stats);
-      } else {
-        setComplaintsData({ total: 0, resolved: 0, inProgress: 0, pending: 0, rejected: 0 });
-      }
-    } catch (error) {
-      setError('Failed to load complaint statistics.');
-    } finally {
-      setIsLoadingComplaints(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user && user._id) {
-      fetchComplaintStatistics();
-    }
-  }, [user]);
-
   const [complaintsData, setComplaintsData] = useState({
     total: 0,
     resolved: 0,
@@ -48,6 +25,33 @@ export default function ProfilePage() {
   });
   const [isLoadingComplaints, setIsLoadingComplaints] = useState(true);
   const [error, setError] = useState(null);
+
+  const fetchComplaintStatistics = async () => {
+    try {
+      setIsLoadingComplaints(true);
+      const data = await getUserComplaintStats();
+      if (data && data.data) {
+        setComplaintsData(data.data);
+      } else if (data && data.stats) {
+        setComplaintsData(data.stats);
+      } else {
+        setComplaintsData({ total: 0, resolved: 0, inProgress: 0, pending: 0, rejected: 0 });
+      }
+    } catch (err) {
+      console.error('Failed to load stats:', err);
+      setComplaintsData({ total: 0, resolved: 0, inProgress: 0, pending: 0, rejected: 0 });
+    } finally {
+      setIsLoadingComplaints(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user && user._id) {
+      fetchComplaintStatistics();
+    } else if (!loading) {
+      setIsLoadingComplaints(false);
+    }
+  }, [user, loading]);
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
@@ -68,8 +72,9 @@ export default function ProfilePage() {
   }
 
   const formatDate = (dateString) => {
+    if (!dateString) return 'Not set';
     const date = new Date(dateString);
-    return isNaN(date.getTime()) ? 'Invalid Date' : date.toLocaleDateString('en-IN', {
+    return isNaN(date.getTime()) ? 'Not set' : date.toLocaleDateString('en-IN', {
       day: 'numeric',
       month: 'long',
       year: 'numeric'
@@ -77,16 +82,13 @@ export default function ProfilePage() {
   };
 
   const getLanguageName = (code) => {
+    if (!code) return 'English';
     const language = supportedLanguages.find(lang => lang.code === code);
     return language ? language.name : code;
   };
 
   return (
-
-
-
     <div className="bg-gray-50 min-h-[calc(100vh-200px)]">
-
       {/* Breadcrumb */}
       <div className="bg-white py-2.5 border-b border-gray-200 shadow-sm">
         <div className="container mx-auto px-4">
@@ -98,7 +100,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-
       <div className="max-w-6xl mx-auto px-4 py-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -106,42 +107,87 @@ export default function ProfilePage() {
           transition={{ duration: 0.5 }}
         >
           <div className="grid gap-8 md:grid-cols-[1fr_2fr]">
-            <Card className="bg-white border-0 shadow-xl overflow-hidden">
-              <CardHeader className="bg-gradient-to-b from-blue-900 to-blue-800 border-b-0 rounded-t-lg pb-4">
-                <CardTitle className="text-white text-lg font-bold">User Profile</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 px-6 py-5">
-                <div className="flex justify-center -mt-10 mb-2">
-                  <div className="relative">
-                    <div className="h-20 w-20 rounded-full bg-blue-100 flex items-center justify-center border-4 border-white shadow-lg">
-                      <User className="h-10 w-10 text-blue-700" />
+            {/* Left Column - User Card */}
+            <div className="space-y-6">
+              <Card className="bg-white border-0 shadow overflow-hidden">
+                <CardHeader className="bg-gradient-to-b from-blue-900 to-blue-800 border-b-0 rounded-t-lg pb-4">
+                  <CardTitle className="text-white text-lg font-bold">User Profile</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 px-6 py-5">
+                  <div className="flex justify-center -mt-10 mb-2">
+                    <div className="relative">
+                      <div className="h-20 w-20 rounded-full bg-blue-100 flex items-center justify-center border-4 border-white shadow-lg">
+                        <User className="h-10 w-10 text-blue-700" />
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="space-y-1 text-center">
-                  <h2 className="text-lg font-medium text-gray-900">{user.name}</h2>
-                  <p className="text-sm text-gray-500">User ID: {user._id}</p>
-                </div>
-                <Separator />
-                <div className="space-y-3 text-sm text-gray-700">
-                  <div className="flex items-center">
-                    <Mail className="h-4 w-4 mr-2 text-blue-600" /> {user.email}
+                  <div className="space-y-1 text-center">
+                    <h2 className="text-lg font-semibold text-gray-900">{user.name || 'User'}</h2>
+                    <p className="text-xs text-gray-400">ID: {user._id}</p>
                   </div>
-                  <div className="flex items-center">
-                    <Phone className="h-4 w-4 mr-2 text-blue-600" /> {user.phone}
+                  <Separator />
+                  <div className="space-y-3 text-sm text-gray-700">
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-blue-600 shrink-0" />
+                      <span className="truncate">{user.email || 'Not set'}</span>
+                      {user.emailVerified ? (
+                        <span className="ml-2 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded">Verified</span>
+                      ) : (
+                        <span className="ml-2 text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded">Unverified</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-4 w-4 text-blue-600 shrink-0" />
+                      <span>{user.phone || 'Not set'}</span>
+                      {user.phoneVerified ? (
+                        <span className="ml-2 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded">Verified</span>
+                      ) : (
+                        <span className="ml-2 text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded">Unverified</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-blue-600 shrink-0" />
+                      <span>Gender: {user.gender || 'Not set'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4 text-blue-600 shrink-0" />
+                      <span>Language: {getLanguageName(user.languagePreference)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-blue-600 shrink-0" />
+                      <span>Joined: {formatDate(user.createdAt)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center">
-                    <Globe className="h-4 w-4 mr-2 text-blue-600" /> Preferred Language: {getLanguageName(user.languagePreference)}
-                  </div>
-                  <div className="flex items-center">
-                    <Calendar className="h-4 w-4 mr-2 text-blue-600" /> Joined: {formatDate(user.createdAt)}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
+              {/* Address Card */}
+              <Card className="bg-white border-0 shadow overflow-hidden">
+                <CardHeader className="bg-gradient-to-r from-blue-900 to-blue-800 border-b-0 py-3 px-6">
+                  <CardTitle className="text-white text-sm font-bold flex items-center gap-2">
+                    <MapPin className="h-4 w-4" /> Address Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-6 py-4 space-y-2 text-sm text-gray-700">
+                  {user.address || user.district || user.state || user.pincode ? (
+                    <>
+                      {user.address && <p>{user.address}</p>}
+                      <p>
+                        {[user.district, user.state].filter(Boolean).join(', ')}
+                        {user.pincode && ` - ${user.pincode}`}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-gray-400 italic">No address added yet. <Link href="/editprofile" className="text-blue-600 hover:underline">Add now</Link></p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Right Column */}
             <div className="space-y-6">
-              <Card className="border-0 bg-white shadow-xl overflow-hidden">
+              {/* Quick Actions */}
+              <Card className="border-0 bg-white shadow overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-900 to-blue-800 border-b-0">
                   <CardTitle className="text-white text-lg font-bold">Quick Actions</CardTitle>
                 </CardHeader>
@@ -156,20 +202,58 @@ export default function ProfilePage() {
                     <Link href="/editprofile" passHref>
                       <Button variant="secondary" className="w-full">Edit Profile</Button>
                     </Link>
-                    <Button variant="outline" className="w-full">Change Password</Button>
+                    <Link href="/editprofile" passHref>
+                      <Button variant="outline" className="w-full">Change Password</Button>
+                    </Link>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="border-0 bg-white shadow-xl overflow-hidden">
+              {/* Additional Info */}
+              {(user.occupation || user.idType || user.dob) && (
+                <Card className="border-0 bg-white shadow overflow-hidden">
+                  <CardHeader className="bg-gradient-to-r from-blue-900 to-blue-800 border-b-0 py-3 px-6">
+                    <CardTitle className="text-white text-sm font-bold">Additional Information</CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-6 py-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {user.dob && (
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Date of Birth</p>
+                          <p className="text-gray-800 font-medium flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5 text-blue-600" /> {user.dob}
+                          </p>
+                        </div>
+                      )}
+                      {user.occupation && (
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">Occupation</p>
+                          <p className="text-gray-800 font-medium flex items-center gap-1.5">
+                            <Briefcase className="h-3.5 w-3.5 text-blue-600" /> {user.occupation}
+                          </p>
+                        </div>
+                      )}
+                      {user.idType && user.idNumber && (
+                        <div>
+                          <p className="text-gray-400 text-xs uppercase mb-1">{user.idType}</p>
+                          <p className="text-gray-800 font-medium flex items-center gap-1.5">
+                            <CreditCard className="h-3.5 w-3.5 text-blue-600" /> {user.idNumber}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Complaint Statistics */}
+              <Card className="border-0 bg-white shadow overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-blue-900 to-blue-800 border-b-0">
                   <CardTitle className="text-white text-lg font-bold">Complaint Statistics</CardTitle>
                 </CardHeader>
                 <CardContent className="px-6 py-4">
                   {isLoadingComplaints ? (
                     <div className="flex justify-center py-4"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-800"></div></div>
-                  ) : error ? (
-                    <p className="text-sm text-red-500 text-center py-4">{error}</p>
                   ) : (
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-blue-50 rounded-lg p-4 text-center border border-blue-200">

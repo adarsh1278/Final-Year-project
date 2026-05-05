@@ -25,17 +25,26 @@ const LanguageSelector = () => {
   const [isTranslating, setIsTranslating] = useState(false);
   const { i18n, t } = useTranslation();
 
-  const currentLanguage = supportedLanguages.find(lang => lang.code === i18n.language) || supportedLanguages[0];
+  // i18n.language can be 'en-US', 'en-IN', etc. — extract base code
+  const langBase = (i18n.language || 'en').split('-')[0];
+  const currentLanguage = supportedLanguages.find(lang => lang.code === langBase) || supportedLanguages[0];
 
   const handleSelect = async (langCode) => {
     setIsOpen(false);
-    if (langCode === i18n.language) return;
+    if (langCode === langBase) return;
     
-    setIsTranslating(true);
-    i18n.changeLanguage(langCode);
-    
-    // Store selected language
+    // Store selected language (sync with i18next's own key too)
     localStorage.setItem('selectedLanguage', langCode);
+    localStorage.setItem('i18nextLng', langCode);
+    i18n.changeLanguage(langCode);
+
+    if (langCode === 'en') {
+      // Reload page to get clean English DOM — restoring translated nodes is unreliable
+      window.location.reload();
+      return;
+    }
+
+    setIsTranslating(true);
 
     try {
       // Small delay to let React re-render with i18n keys first
@@ -80,7 +89,7 @@ const LanguageSelector = () => {
               {supportedLanguages.map((lang) => (
                 <button
                   key={lang.code}
-                  className={`w-full text-left px-4 py-2 hover:bg-blue-50 flex items-center justify-between transition-colors ${lang.code === i18n.language ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:text-blue-900'
+                  className={`w-full text-left px-4 py-2 hover:bg-blue-50 flex items-center justify-between transition-colors ${lang.code === langBase ? 'bg-blue-100 text-blue-900' : 'text-gray-700 hover:text-blue-900'
                     }`}
                   onClick={() => handleSelect(lang.code)}
                 >
@@ -88,7 +97,7 @@ const LanguageSelector = () => {
                     <span className="text-lg mr-3">{lang.flag}</span>
                     <span className="text-sm font-medium">{lang.name}</span>
                   </div>
-                  {lang.code === i18n.language && (
+                  {lang.code === langBase && (
                     <Check className="h-4 w-4 text-blue-600" />
                   )}
                 </button>

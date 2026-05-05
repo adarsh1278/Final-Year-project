@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { buildVerificationEmail, sendEmail, sendSMS } from '../utils/notifications.js';
 
 /**
  * Generate JWT token for authentication
@@ -197,6 +198,48 @@ export const logout = (req, res) => {
 };
 
 /**
+ * Update user profile
+ * @route PUT /api/auth/profile
+ * @requires Authentication
+ */
+export const updateProfile = async (req, res) => {
+  try {
+    const allowedFields = [
+      'name', 'languagePreference', 'gender', 'dob',
+      'occupation', 'address', 'district', 'state', 'pincode',
+      'idType', 'idNumber', 'notificationPreferences'
+    ];
+
+    const updates = {};
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        // Support nested object for notificationPreferences
+        updates[field] = req.body[field];
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('-passwordHash');
+
+    if (!user) {
+      return res.status(404).json({ status: 'error', message: 'User not found' });
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Profile updated successfully',
+      data: user
+    });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ status: 'error', message: 'Failed to update profile' });
+  }
+};
+
+/**
  * Update user password
  * @route PATCH /api/auth/update-password
  * @requires Authentication
@@ -290,5 +333,101 @@ export const forgotPassword = async (req, res) => {
       status: 'error',
       message: 'Failed to process password reset'
     });
+  }
+};
+
+/**
+ * Send verification code to email or phone
+ * @route POST /api/auth/send-verification
+ */
+export const sendVerification = async (req, res) => {
+  try {
+    const { type } = req.body; // 'email' or 'phone'
+    if (!type || !['email', 'phone'].includes(type)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid type' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' });
+
+    // generate 6-digit code
+    const token = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    if (type === 'email') {
+      user.emailVerified = false;
+      user.emailVerifyToken = token;
+      user.emailVerifyExpires = expires;
+      await user.save();
+
+      const sent = await sendEmail({
+        to: user.email,
+        subject: '[Official Notice] Verification Code',
+        text: `Your verification code is: ${token}`,
+        html: buildVerificationEmail(token),
+      });
+
+      if (!sent) return res.status(500).json({ status: 'error', message: 'Failed to send verification email' });
+      return res.status(200).json({ status: 'success', message: 'Verification email sent' });
+    }
+
+    if (type === 'phone') {
+      if (!user.phone) return res.status(400).json({ status: 'error', message: 'No phone number on file' });
+      user.phoneVerified = false;
+      user.phoneVerifyToken = token;
+      user.phoneVerifyExpires = expires;
+      await user.save();
+
+      const sent = await sendSMS({ to: user.phone, message: `Your verification code is: ${token}` });
+      if (!sent) return res.status(500).json({ status: 'error', message: 'Failed to send verification SMS' });
+      return res.status(200).json({ status: 'success', message: 'Verification SMS sent' });
+    }
+  } catch (err) {
+    console.error('sendVerification error:', err);
+    res.status(500).json({ status: 'error', message: 'Failed to send verification' });
+  }
+};
+
+/**
+ * Verify code for email or phone
+ * @route POST /api/auth/verify
+ */
+export const verifyContact = async (req, res) => {
+  try {
+    const { type, token } = req.body;
+    const normalizedToken = String(token || '').trim();
+    if (!type || !normalizedToken) return res.status(400).json({ status: 'error', message: 'Missing parameters' });
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ status: 'error', message: 'User not found' });
+
+    if (type === 'email') {
+      if (!user.emailVerifyToken || !user.emailVerifyExpires) return res.status(400).json({ status: 'error', message: 'No verification requested' });
+      if (Date.now() > user.emailVerifyExpires) return res.status(400).json({ status: 'error', message: 'Token expired' });
+      if (normalizedToken !== String(user.emailVerifyToken).trim()) return res.status(400).json({ status: 'error', message: 'Invalid token' });
+
+      user.emailVerified = true;
+      user.emailVerifyToken = undefined;
+      user.emailVerifyExpires = undefined;
+      await user.save();
+      return res.status(200).json({ status: 'success', message: 'Email verified' });
+    }
+
+    if (type === 'phone') {
+      if (!user.phoneVerifyToken || !user.phoneVerifyExpires) return res.status(400).json({ status: 'error', message: 'No verification requested' });
+      if (Date.now() > user.phoneVerifyExpires) return res.status(400).json({ status: 'error', message: 'Token expired' });
+      if (normalizedToken !== String(user.phoneVerifyToken).trim()) return res.status(400).json({ status: 'error', message: 'Invalid token' });
+
+      user.phoneVerified = true;
+      user.phoneVerifyToken = undefined;
+      user.phoneVerifyExpires = undefined;
+      await user.save();
+      return res.status(200).json({ status: 'success', message: 'Phone verified' });
+    }
+
+    res.status(400).json({ status: 'error', message: 'Invalid type' });
+  } catch (err) {
+    console.error('verifyContact error:', err);
+    res.status(500).json({ status: 'error', message: 'Verification failed' });
   }
 };

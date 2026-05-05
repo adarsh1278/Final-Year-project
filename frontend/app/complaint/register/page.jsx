@@ -119,7 +119,8 @@ export default function RegisterComplaintPage() {
         setValue(key, value);
       });
 
-      handleSubmit(onSubmit)();
+      // The chatbot already submits the complaint directly.
+      // Keep the form in sync, but do not submit a second time here.
     }
   };
 

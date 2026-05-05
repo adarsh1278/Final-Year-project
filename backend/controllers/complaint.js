@@ -3,6 +3,7 @@
 import Complaint from '../models/Complaint.js';
 import crypto from 'crypto';
 import User from '../models/User.js';
+import { sendComplaintNotifications } from '../utils/notifications.js';
 
 // import nodemailer from 'nodemailer';
 
@@ -10,6 +11,7 @@ export const registerComplaint = async (req, res) => {
   try {
     const { department, title, description, additionalDetails } = req.body;
     const complaintNumber = `${department.slice(0,3).toUpperCase()}-${Date.now()}-${crypto.randomInt(1000,9999)}`;
+    const user = await User.findById(req.user.id).select('name email phone');
     
     const complaint = await Complaint.create({
       userId: req.user.id,
@@ -32,6 +34,19 @@ export const registerComplaint = async (req, res) => {
     // const user = await User.findById(req.user.id);
     // const transporter = nodemailer.createTransport({ ... });
     // transporter.sendMail(mailOptions);
+
+    // Send notifications in the background; failure must not block complaint creation
+    sendComplaintNotifications({
+      email: user?.email,
+      phone: user?.phone,
+      complaintNumber,
+      title,
+      department,
+      statusLabel: 'Complaint Registered',
+      message: `Your complaint has been registered successfully.`,
+    }).catch((error) => {
+      console.error('Complaint registration notification error:', error.message);
+    });
 
     res.status(201).json({ message: "Complaint registered", complaintNumber });
   } catch (error) {

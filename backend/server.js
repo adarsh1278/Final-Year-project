@@ -305,7 +305,7 @@ io.on('connection', (socket) => {
 });
 
 // ✅ DB + server startup
-await connectDB();
+const dbConnected = await connectDB();
 
 // Create departments on startup (run only once)
 try {
@@ -316,3 +316,7 @@ try {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT} with Socket.IO`));
+
+if (!dbConnected) {
+  console.warn('Server started without a database connection. DB-backed features will fail until MongoDB is available.');
+}

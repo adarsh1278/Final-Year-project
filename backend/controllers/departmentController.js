@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Department from '../models/Department.js';
 import Complaint from '../models/Complaint.js';
+import User from '../models/User.js';
+import { sendComplaintNotifications } from '../utils/notifications.js';
 
 const generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
 
@@ -309,6 +311,24 @@ export const updateComplaintStatus = async (req, res) => {
     if (expectedResolutionDate) complaint.expectedResolutionDate = new Date(expectedResolutionDate);
 
     await complaint.save();
+
+    // Notify the user after a complaint update without blocking the response.
+    const complaintUser = await User.findById(complaint.userId).select('name email phone');
+    if (complaintUser && (status || responseFromDept)) {
+      sendComplaintNotifications({
+        email: complaintUser.email,
+        phone: complaintUser.phone,
+        complaintNumber,
+        title: complaint.title,
+        department: complaint.department,
+        statusLabel: status ? `Complaint ${status}` : 'Complaint Update',
+        message: status
+          ? `Your complaint status has been updated to ${status}${responseFromDept ? `. ${responseFromDept}` : ''}`
+          : `There is an update on your complaint.${responseFromDept ? ` ${responseFromDept}` : ''}`,
+      }).catch((error) => {
+        console.error('Complaint status notification error:', error.message);
+      });
+    }
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
@@ -631,6 +651,22 @@ export const requestCloseComplaint = async (req, res) => {
 
     await complaint.save();
 
+    // Notify the user that the department requested closure.
+    const complaintUser = await User.findById(complaint.userId).select('name email phone');
+    if (complaintUser) {
+      sendComplaintNotifications({
+        email: complaintUser.email,
+        phone: complaintUser.phone,
+        complaintNumber,
+        title: complaint.title,
+        department: complaint.department,
+        statusLabel: 'Close Request',
+        message: `The department requested to close your complaint. Reason: ${complaint.closeRequest.reason}`,
+      }).catch((error) => {
+        console.error('Close request notification error:', error.message);
+      });
+    }
+
     // Emit socket event
     const io = req.app.get('io');
     if (io) {
@@ -698,6 +734,24 @@ export const handleCloseResponse = async (req, res) => {
     }
 
     await complaint.save();
+
+    // Notify the user about the outcome of their close response.
+    const complaintUser = await User.findById(complaint.userId).select('name email phone');
+    if (complaintUser) {
+      sendComplaintNotifications({
+        email: complaintUser.email,
+        phone: complaintUser.phone,
+        complaintNumber,
+        title: complaint.title,
+        department: complaint.department,
+        statusLabel: accepted ? 'Complaint Closed' : 'Close Request Rejected',
+        message: accepted
+          ? 'Your complaint has been closed successfully based on your acceptance.'
+          : 'You rejected the close request. The complaint will remain open.',
+      }).catch((error) => {
+        console.error('Close response notification error:', error.message);
+      });
+    }
 
     // Emit socket event
     const io = req.app.get('io');
@@ -917,6 +971,22 @@ export const transferComplaint = async (req, res) => {
 
     await complaint.save();
 
+    // Notify the user that the complaint is being transferred.
+    const complaintUser = await User.findById(complaint.userId).select('name email phone');
+    if (complaintUser) {
+      sendComplaintNotifications({
+        email: complaintUser.email,
+        phone: complaintUser.phone,
+        complaintNumber,
+        title: complaint.title,
+        department: complaint.department,
+        statusLabel: 'Complaint Transfer Requested',
+        message: `Your complaint has been requested to transfer from ${fromDepartment} to ${toDepartment}. Reason: ${reason}`,
+      }).catch((error) => {
+        console.error('Transfer request notification error:', error.message);
+      });
+    }
+
     // Emit socket event
     const io = req.app.get('io');
     if (io) {
@@ -1008,6 +1078,21 @@ export const acceptTransfer = async (req, res) => {
     complaint.pendingTransfer = { isPending: false };
 
     await complaint.save();
+
+    // Notify the user that the transfer was accepted.
+    if (complaint.userId?.email || complaint.userId?.phone) {
+      sendComplaintNotifications({
+        email: complaint.userId.email,
+        phone: complaint.userId.phone,
+        complaintNumber,
+        title: complaint.title,
+        department: complaint.department,
+        statusLabel: 'Complaint Transferred',
+        message: `Your complaint has been transferred from ${fromDepartment} to ${toDepartment}.`,
+      }).catch((error) => {
+        console.error('Transfer accepted notification error:', error.message);
+      });
+    }
 
     // Emit socket events
     const io = req.app.get('io');
@@ -1107,6 +1192,22 @@ export const rejectTransfer = async (req, res) => {
     complaint.pendingTransfer = { isPending: false };
 
     await complaint.save();
+
+    // Notify the user that the transfer was rejected.
+    const complaintUser = await User.findById(complaint.userId).select('name email phone');
+    if (complaintUser) {
+      sendComplaintNotifications({
+        email: complaintUser.email,
+        phone: complaintUser.phone,
+        complaintNumber,
+        title: complaint.title,
+        department: complaint.department,
+        statusLabel: 'Transfer Rejected',
+        message: `The transfer request from ${fromDepartment} to ${toDepartment} was rejected. Reason: ${rejectionReason || 'Not specified'}`,
+      }).catch((error) => {
+        console.error('Transfer rejected notification error:', error.message);
+      });
+    }
 
     // Emit socket event
     const io = req.app.get('io');
